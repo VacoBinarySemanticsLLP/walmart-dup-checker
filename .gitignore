@@ -1,0 +1,12 @@
+# Python environment
+backend/venv/
+__pycache__/
+*.pyc
+
+# Environment variables (API Keys)
+backend/.env
+
+# Node/System
+node_modules/
+.DS_Store
+backend/ai_analysis_cache.json
