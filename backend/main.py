@@ -115,6 +115,16 @@ async def process_analysis(title, attributes, imageUrls):
         contents = [prompt]
         for img in image_parts:
             contents.append(img)
+
+        print("\n" + "="*50)
+        print("🚀 SENDING REQUEST TO GEMINI (Single Analysis)")
+        print("="*50)
+        for idx, item in enumerate(contents):
+            if isinstance(item, str):
+                print(f"--- Text Part {idx} ---\n{item}\n")
+            elif isinstance(item, dict):
+                print(f"--- Image Part {idx} --- [Mime Type: {item.get('mime_type')}, Data Length: {len(item.get('data', ''))}]")
+        print("="*50 + "\n")
             
         response = model.generate_content(contents)
         
@@ -124,7 +134,11 @@ async def process_analysis(title, attributes, imageUrls):
             
         # Clean up potential markdown formatting
         text = response.text.strip()
-        print(f"AI Raw Response: \n{text}\n")
+        print("\n" + "="*50)
+        print("✅ RECEIVED RESPONSE FROM GEMINI (Single Analysis)")
+        print("="*50)
+        print(f"{text}")
+        print("="*50 + "\n")
         text = text.replace("```json", "").replace("```", "").strip()
         
         return {"status": "success", "data": json.loads(text)}
@@ -264,6 +278,16 @@ async def process_batch_analysis(products):
                     contents.append("[No Images Provided for this product]")
 
     try:
+        print("\n" + "="*50)
+        print("🚀 SENDING REQUEST TO GEMINI (Batch Analysis)")
+        print("="*50)
+        for idx, item in enumerate(contents):
+            if isinstance(item, str):
+                print(f"--- Text Part {idx} ---\n{item}\n")
+            elif isinstance(item, dict):
+                print(f"--- Image Part {idx} --- [Mime Type: {item.get('mime_type')}, Data Length: {len(item.get('data', ''))}]")
+        print("="*50 + "\n")
+
         model = genai.GenerativeModel('gemini-3.5-flash')
         response = model.generate_content(contents)
         
@@ -271,7 +295,11 @@ async def process_batch_analysis(products):
             return {"status": "error", "message": "no response by ai"}
             
         text = response.text.strip().replace("```json", "").replace("```", "").strip()
-        print(f"AI Batch Response: \n{text}\n")
+        print("\n" + "="*50)
+        print("✅ RECEIVED RESPONSE FROM GEMINI (Batch Analysis)")
+        print("="*50)
+        print(f"{text}")
+        print("="*50 + "\n")
         return {"status": "success", "data": json.loads(text)}
         
     except json.JSONDecodeError:
