@@ -110,7 +110,7 @@ async def process_analysis(title, attributes, imageUrls):
         return {"status": "error", "message": "Could not fetch any images."}
 
     try:
-        model = genai.GenerativeModel('gemini-3.5-flash')
+        model = genai.GenerativeModel('gemini-2.5-flash-lite')
         
         contents = [prompt]
         for img in image_parts:
@@ -288,7 +288,7 @@ async def process_batch_analysis(products):
                 print(f"--- Image Part {idx} --- [Mime Type: {item.get('mime_type')}, Data Length: {len(item.get('data', ''))}]")
         print("="*50 + "\n")
 
-        model = genai.GenerativeModel('gemini-3.5-flash')
+        model = genai.GenerativeModel('gemini-2.5-flash-lite')
         response = model.generate_content(contents)
         
         if not response.text:
