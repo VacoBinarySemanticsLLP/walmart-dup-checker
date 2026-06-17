@@ -9,3 +9,13 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    labels:
+      caddy: dupcheck.duckdns.org
+      caddy.reverse_proxy: "{{upstreams 8000}}"
+    networks:
+      - default
+      - caddy_network
+
+networks:
+  caddy_network:
+    external: true
