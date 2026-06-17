@@ -1,0 +1,11 @@
+version: '3.8'
+
+services:
+  dupcheck-backend:
+    build: .
+    container_name: dupcheck-backend
+    ports:
+      - "8080:8000"
+    restart: unless-stopped
+    env_file:
+      - .env
