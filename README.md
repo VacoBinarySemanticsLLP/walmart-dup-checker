@@ -1,1 +1,0 @@
-# walmart-dup-checker
