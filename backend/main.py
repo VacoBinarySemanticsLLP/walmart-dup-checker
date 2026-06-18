@@ -4,6 +4,8 @@ import base64
 import asyncio
 import httpx
 import hashlib
+import io
+from PIL import Image
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import google.generativeai as genai
@@ -56,13 +58,62 @@ CORS(app)
 
 async def fetch_image(client: httpx.AsyncClient, url: str) -> dict:
     try:
-        response = await client.get(url, timeout=10.0)
-        response.raise_for_status()
-        mime_type = response.headers.get("content-type", "image/jpeg")
-        base64_data = base64.b64encode(response.content).decode('utf-8')
+        avif_headers = {"Accept": "image/avif,image/webp,image/jpeg,*/*"}
+        raw_bytes = None
+        source_format = "JPEG"
+
+        # ── Step 1: Try AVIF first by swapping the URL extension ──────────
+        avif_url = url
+        if url.lower().endswith('.jpeg'):
+            avif_url = url[:-5] + '.avif'
+        elif url.lower().endswith('.jpg'):
+            avif_url = url[:-4] + '.avif'
+
+        if avif_url != url:
+            try:
+                avif_response = await client.get(avif_url, timeout=10.0, headers=avif_headers)
+                if avif_response.status_code == 200:
+                    raw_bytes = avif_response.content
+                    source_format = "AVIF"
+                else:
+                    print(f"⚠️  AVIF not available (HTTP {avif_response.status_code}), falling back to JPEG")
+            except Exception as avif_err:
+                print(f"⚠️  AVIF fetch failed ({avif_err}), falling back to JPEG")
+
+        # ── Step 2: Fallback — fetch original JPEG if AVIF not served ─────
+        if raw_bytes is None:
+            response = await client.get(url, timeout=10.0)
+            response.raise_for_status()
+            raw_bytes = response.content
+            source_format = "JPEG"
+
+        original_size_kb = len(raw_bytes) / 1024
+
+        # ── Step 3: Compression Pipeline ─────────────────────────────────
+        # Resize (650px max) → Grayscale → WebP quality 85
+        img = Image.open(io.BytesIO(raw_bytes))
+        original_dims = img.size
+
+        img.thumbnail((600, 600), Image.LANCZOS)     # Resize — keeps aspect ratio
+        new_dims = img.size
+
+        output = io.BytesIO()
+        img.save(output, format='WEBP', quality=85, method=6)
+        output.seek(0)
+        final_bytes = output.read()
+        final_size_kb = len(final_bytes) / 1024
+        reduction_pct = (1 - final_size_kb / original_size_kb) * 100
+
+        print(
+            f"🖼️  [{source_format}] "
+            f"{original_dims[0]}x{original_dims[1]}px → {new_dims[0]}x{new_dims[1]}px (color WebP) | "
+            f"Downloaded: {original_size_kb:.1f} KB  →  Final: {final_size_kb:.1f} KB  "
+            f"({reduction_pct:.1f}% reduced)"
+        )
+
         return {
-            "mime_type": mime_type,
-            "data": base64_data
+            "mime_type": "image/webp",
+            "data": base64.b64encode(final_bytes).decode('utf-8')
         }
     except Exception as e:
         print(f"Error fetching image {url}: {e}")
@@ -207,11 +258,21 @@ async def process_batch_analysis(products):
     Identify any clear contradictions (e.g., text on the image says "2-Pack" but text attributes say "Count: 1", or description mentions "Stainless Steel" but text on the image says "Plastic"). If there is a contradiction, flag it as having 'bad data'.
 
     Task Phase 2: Horizontal Check (Duplicate Clustering)
-    For all products that DO NOT have bad data (i.e., they passed Phase 1), compare them against each other using their Titles, Descriptions, Attributes, and the TEXT extracted from their Images.
+    For all products that DO NOT have bad data (i.e., they passed Phase 1), compare them against each other using their Titles, Descriptions, Attributes, and the TEXT extracted from their Images in Phase 1.
     CRITICAL INSTRUCTION FOR PHASE 2: Just like Phase 1, you must remain COMPLETELY BLIND to the visual objects, colors, or patterns in the images. ONLY use the literal text written on the images to differentiate them.
     Determine if they are identical items (duplicates), variants, or completely different items.
     Group similar/identical items into clusters. If a product is unique, it goes into its own cluster.
-    
+
+    MANDATORY RULE — IMAGE TEXT TAKES PRIORITY FOR DIFFERENTIATION:
+    You MUST cross-reference the `extracted_image_specs` you found in Phase 1 for each product during clustering.
+    If the `extracted_image_specs` of two products contain ANY differing text — including but not limited to:
+      - Different model numbers (e.g., "LMS04 88175" vs "LMS01 88172")
+      - Different style names (e.g., "Duchess" vs "Noblesse")
+      - Different sizes, counts, weights, flavors, or any other explicit spec
+    — then those products MUST be placed in SEPARATE clusters, even if ALL their table attributes are identical.
+    Identical table attributes alone are NOT sufficient to call two products duplicates if their image text differs.
+    Two products are only true duplicates if BOTH their table attributes AND their extracted image specs are identical.
+
     Respond STRICTLY with a JSON object in the following format, with no markdown formatting:
     {
       "vertical_checks": [
@@ -233,7 +294,7 @@ async def process_batch_analysis(products):
         {
           "cluster_name": "string (e.g., 'Cluster 1')",
           "product_ids": ["string", "string"],
-          "reason": "string (A HIGHLY DESCRIPTIVE explanation of exactly why these products belong together, and exactly what specific attributes/text in the table differentiate them from the OTHER clusters. Explicitly name the table fields that differ, e.g., 'These items share Size X, whereas Cluster 2 has Size Y in the Size attribute field.')"
+          "reason": "string (A HIGHLY DESCRIPTIVE explanation of exactly why these products belong together OR apart. If separated due to differing image text, explicitly state which image spec text differed and for which product IDs.)"
         }
       ]
     }
