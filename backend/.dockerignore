@@ -1,4 +1,5 @@
 .env
+.env.example
 node_modules/
 __pycache__/
 *.pyc
@@ -7,4 +8,7 @@ venv/
 .git/
 .gitignore
 *.md
-*.md
+docker-compose.yml
+start.sh
+ai_analysis_cache.json
+.hermes
