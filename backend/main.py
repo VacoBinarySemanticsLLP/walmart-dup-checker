@@ -298,12 +298,18 @@ INSTRUCTIONS:
 
 CRITICAL RULES FROM SOP:
 - Attributes listed as "Ignore Attributes" in matching SOP rules must NOT affect decisions
+- Do not flag 'Bad Data' just because a specific attribute is missing (-) if that information is clearly stated in the title, description, or under a synonymous attribute name.
 - When a rule specifies visual_check=REQUIRED, images MUST be verified
-- Bad data products go in their own cluster, never merged with others
+- COUNT VERIFICATION (ALL CATEGORIES): Pay extremely close attention to the Unit of Measurement (UOM) in images and text. Distinguish between 'Package-Level Count' (e.g., 1 Box, 1 Case) and 'Item-Level Count' (e.g., 60 Pills, 12 Pencils, 24 Bottles). If an attribute like 'Total Count' or 'Multipack Quantity' is '1', it almost always refers to '1 retail package being sold'. Do NOT flag 'Total Count: 1' as a contradiction against 'Count Per Pack: 60' or a product image showing '60 Ct'. As long as the hierarchical math (Packages × Items Per Package) is logically consistent, it is a PERFECT match, not Bad Data.
+- PACKAGING HORIZONTAL RULES: A 2x30 configuration (2 bottles of 30) is NOT a duplicate of a 1x60 configuration (1 bottle of 60). Even if total units are the same, different package structures must be clustered separately (e.g., 'Not a Duplicate - Variant').
+- PACKAGING TYPE RULES: Pay attention to the physical container type. A bottle is NOT a duplicate of a blister pack, and a blister pack is NOT a duplicate of a strip. Cluster these separately.
+- CLUSTERING LOGIC: Group identical/duplicate products into a single cluster together in the `product_ids` array. 
+- CLUSTERING LOGIC: If a product is a variant (e.g., different packaging type or configuration) or completely unique from the others, it must be placed in its own standalone cluster.
+- CLUSTERING LOGIC: Bad data products MUST be separated into their own individual clusters, never merged with any other product.
 - Different sizes, model numbers, or finish types = SEPARATE clusters always
 - You MUST assign exactly ONE of the following official actions to each cluster:
-  * "Duplicate"
-  * "Not a Duplicate"
+  * "Duplicate" (Use if the cluster contains multiple identical items, or if the item perfectly matches the primary group)
+  * "Not a Duplicate" (Use if the cluster contains a unique item completely different from the primary group)
   * "Not a Duplicate - Variant"
   * "Not a Duplicate - Variant Attribute Data Not Available"
   * "Not a Duplicate - Incorrect Variant Attribute Names"

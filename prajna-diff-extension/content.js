@@ -30,7 +30,7 @@ var shadow = host.attachShadow({mode:'open'});
 
 var css = document.createElement('style');
 css.textContent = `
-*{box-sizing:border-box;margin:0;padding:0;font-family:'Segoe UI',system-ui,sans-serif;}
+*{box-sizing:border-box;margin:0;padding:0;font-family:'Inter','Roboto','Segoe UI',system-ui,sans-serif;}
 #wrap{
  width:var(--panel-w,440px);height:calc(100vh - 60px);background:#f0f2ff;
  border-left:1px solid #c8caff;
@@ -140,7 +140,7 @@ css.textContent = `
 .dval:last-child{border-right:none;}
 .dval.red{background:#fff5f5;color:#c0392b;}
 .dval.grn{background:#f0fff4;color:#1a7f4b;}
-.dval.muted{color:#ccc;font-style:italic;font-weight:400;}
+.dval.muted{color:#9ca3af;font-weight:500;}
 .err{background:#fff;border-radius:10px;padding:16px;color:#c0392b;font-size:11px;line-height:1.7;box-shadow:0 1px 6px rgba(0,0,0,.07);}
 .dbg{background:#fff;border-radius:10px;padding:12px;margin-top:8px;font-size:9px;color:#888;line-height:1.8;word-break:break-all;box-shadow:0 1px 4px rgba(0,0,0,.05);}
 #foot{padding:6px 12px;border-top:1px solid #dddeff;background:#eef0ff;flex-shrink:0;display:flex;justify-content:space-between;align-items:center;}
@@ -189,7 +189,7 @@ var PILL_BASE = [
  'border-radius:28px','padding:8px 14px 8px 10px',
  'box-shadow:0 4px 20px rgba(61,61,245,.5)',
  'cursor:pointer',
- 'font-family:Segoe UI,system-ui,sans-serif',
+ 'font-family:"Inter","Roboto","Segoe UI",system-ui,sans-serif',
  'font-size:12px','font-weight:700','color:#fff',
  'border:none','outline:none',
  'user-select:none','-webkit-user-select:none',
@@ -353,8 +353,7 @@ var SKIP_LABELS = [
  'defects','content audit report','image validation','item tracker','copy creation',
  'file status','report an issue','provide feedback','request access','show null data',
  'viewing','select cluster','select grouping','hs-v',
- 'variant group id','variant attribute names','product net content parent',
- 'product net content','flotation tire','electric vehicle tire','is run flat',
+ 'variant group id','variant attribute names','flotation tire','electric vehicle tire','is run flat',
  'abstract product id','manufacturer part number','is prop 65','is resizable',
  'personal relationship','inscription','small parts warning code'
  // NOTE: 'has written warranty' REMOVED — warranty IS relevant per agent feedback
@@ -1287,16 +1286,24 @@ function runAnalysis(manual){
          
          // Only show the cluster breakdown if there are multiple, to keep it clean
          if (clusterCount > 1) {
-             html += '<div class="diff-table" style="animation:slideUp .4s .08s ease both">';
-             html += '<div class="diff-hdr" style="background:#f0f4ff;border-color:#c5c8ff;color:#3d3df5; font-size:14px;">'+
-                '🤖 AI Clusters <span class="diff-badge" style="background:#3d3df5">'+clusterCount+'</span>'+
+             html += '<div class="diff-table" style="animation:slideUp .4s .08s ease both; margin-bottom:12px;">';
+             html += '<div class="diff-hdr" style="background:#eef2ff;border-color:#c7d2fe;color:#4f46e5; font-size:14px;">'+
+                '🤖 AI Clusters <span class="diff-badge" style="background:#4f46e5">'+clusterCount+'</span>'+
               '</div>';
              
               apiResult.horizontal_clustering.forEach(function(c) {
-                 html += '<div class="drow" style="flex-direction:column; align-items:stretch;">' +
-                     '<div class="dlbl" style="color:#3d3df5; font-size:14px;">' + esc(c.recommended_action || c.cluster_name) + '</div>' +
-                     '<div style="padding:6px 10px 2px; font-size:13px; color:#333;"><b>Products:</b> ' + esc(c.product_ids.join(', ')) + '</div>' +
-                     '<div style="padding:4px 10px 8px; font-size:13px; font-style:italic; color:#666;">' + esc(c.reason) + '</div>' +
+                 var actionText = c.recommended_action || c.cluster_name;
+                 var isBadData = actionText.indexOf('Bad Data') >= 0;
+                 var badgeColor = isBadData ? '#dc2626' : '#4f46e5';
+                 var badgeBg = isBadData ? '#fef2f2' : '#eef2ff';
+                 var borderColor = isBadData ? '#fca5a5' : '#c7d2fe';
+                 
+                 html += '<div style="padding:12px; border-bottom:1px solid #f3f4f6; background:#fff;">' +
+                     '<div style="display:flex; align-items:center; margin-bottom:8px;">' +
+                     '<span style="background:'+badgeBg+'; color:'+badgeColor+'; padding:4px 8px; border-radius:4px; font-size:12px; font-weight:700; border:1px solid '+borderColor+';">' + esc(actionText) + '</span>' +
+                     '</div>' +
+                     '<div style="font-size:13px; color:#1f2937; margin-bottom:6px;"><b>Products:</b> ' + esc(c.product_ids.join(', ')) + '</div>' +
+                     '<div style="font-size:13px; color:#4b5563; line-height:1.5;">' + esc(c.reason) + '</div>' +
                      '</div>';
               });
               html += '</div>';
@@ -1312,53 +1319,68 @@ function runAnalysis(manual){
          html += '<div class="drow" style="flex-direction:column; align-items:stretch; padding-bottom: 0;">' +
             '<div class="dlbl" style="color:#374151; font-size:14px; font-weight:700; margin-bottom:6px;">' + esc(v.product_id) + '</div>';
             
-         // Find matching product object to get its raw attributes
-         var prod = products.find(function(p){ return p.id === v.product_id; }) || {attrs:{}};
+         // Find matching product object to get its raw attributes using getGTINLabel to match what the backend returns
+         var prod = products.find(function(p, idx){ return getGTINLabel(p, idx) === v.product_id; }) || {attrs:{}};
          var prodAttrs = prod.attrs || {};
          var mismatches = v.mismatch_details || [];
          
-         // Show the ultra-brief summary from AI so user knows it looked at the image
-         if (v.extracted_image_summary) {
-            html += '<div style="margin-bottom:10px; padding:10px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:4px; font-size:13px; color:#166534;">' + 
-                    '<b>👁️ AI Vision Specs:</b> ' + esc(v.extracted_image_summary) + '</div>';
-         }
-         
-         html += '<table style="width:100%; border-collapse:collapse; font-size:14px; margin-bottom:10px; text-align:left;">';
-         html += '<tr style="border-bottom:1px solid #e5e7eb; color:#6b7280;">' +
-                 '<th style="padding:8px; font-weight:600; width:25%;">Attribute</th>' +
-                 '<th style="padding:8px; font-weight:600; width:45%;">Product Description</th>' +
-                 '<th style="padding:8px; font-weight:600; width:30%;">Image Verification</th>' +
-                 '</tr>';
-                 
-         // Build the table using the frontend data!
-         var attrKeys = Object.keys(prodAttrs);
-         if (attrKeys.length === 0) {
-             html += '<tr><td colspan="3" style="padding:10px; text-align:center; color:#9ca3af; font-style:italic;">No text attributes found on page</td></tr>';
+         // Check if perfect match (no mismatches and no bad data)
+         var isPerfect = (mismatches.length === 0 && !v.has_bad_data);
+
+         if (isPerfect) {
+             html += '<div style="margin-bottom:10px; padding:8px 12px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px; font-size:13px; color:#166534; display:flex; align-items:center;">';
+             html += '<span style="font-size:16px; margin-right:8px;">✅</span>';
+             html += '<div><b>Visuals match text.</b> ' + (v.extracted_image_summary ? '<span style="opacity:0.85">(' + esc(v.extracted_image_summary) + ')</span>' : '') + '</div>';
+             html += '</div>';
          } else {
-             attrKeys.forEach(function(attrKey) {
-                 var textVal = prodAttrs[attrKey];
-                 
-                 // Check if AI flagged this specific attribute
-                 var mismatch = mismatches.find(function(m){ return m.field && m.field.toLowerCase() === attrKey.toLowerCase(); });
-                 
-                 var statColor = mismatch ? '#dc2626' : '#16a34a';
-                 var statIcon = mismatch ? '❌ ' : '✅ ';
-                 var bg = mismatch ? '#fef2f2' : 'transparent';
-                 var imageVal = mismatch ? mismatch.imageValue : 'Match';
-                 
-                 html += '<tr style="border-bottom:1px solid #f3f4f6; background:'+bg+';">' +
-                         '<td style="padding:10px 8px; font-weight:600; color:#374151;">' + esc(attrKey) + '</td>' +
-                         '<td style="padding:10px 8px; color:#4b5563;">' + esc(textVal) + '</td>' +
-                         '<td style="padding:10px 8px; font-weight:700; color:'+statColor+';">' + statIcon + esc(imageVal) + '</td>' +
+             // Show the ultra-brief summary from AI so user knows what it saw
+             if (v.extracted_image_summary) {
+                html += '<div style="margin-bottom:10px; padding:10px; background:#f8fafc; border:1px solid #e2e8f0; border-left:3px solid #94a3b8; border-radius:4px; font-size:13px; color:#334155;">' + 
+                        '<b>👁️ AI Vision Specs:</b> ' + esc(v.extracted_image_summary) + '</div>';
+             }
+             
+             // If there is bad data, show the AI's reasoning
+             if (v.has_bad_data && v.reason) {
+                 html += '<div style="background:#fef2f2; border-left:3px solid #dc2626; padding:10px; margin-bottom:10px; font-size:13px; color:#991b1b; border-radius:0 4px 4px 0;">' +
+                         '<b>Bad Data Detected:</b> ' + esc(v.reason) + '</div>';
+             }
+
+             if (mismatches.length > 0) {
+                 html += '<table style="width:100%; border-collapse:collapse; font-size:14px; margin-bottom:10px; text-align:left;">';
+                 html += '<tr style="border-bottom:1px solid #e5e7eb; color:#6b7280;">' +
+                         '<th style="padding:8px; font-weight:600; width:25%;">Attribute</th>' +
+                         '<th style="padding:8px; font-weight:600; width:45%;">Product Description</th>' +
+                         '<th style="padding:8px; font-weight:600; width:30%;">Image Verification</th>' +
                          '</tr>';
-             });
-         }
-         html += '</table>';
-         
-         // If there is bad data, show the AI's reasoning right below the table
-         if (v.has_bad_data && v.reason) {
-             html += '<div style="background:#fef2f2; border-left:3px solid #dc2626; padding:10px; margin:6px 0 10px 0; font-size:13px; color:#991b1b;">' +
-                     '<b>Bad Data Detected:</b> ' + esc(v.reason) + '</div>';
+                         
+                 // Build the table using the frontend data!
+                 var attrKeys = Object.keys(prodAttrs);
+                 if (attrKeys.length === 0) {
+                     html += '<tr><td colspan="3" style="padding:16px 10px; text-align:center; color:#6b7280; font-weight:500; background:#f9fafb;">No text attributes found on page</td></tr>';
+                 } else {
+                     attrKeys.forEach(function(attrKey) {
+                         var textVal = prodAttrs[attrKey];
+                         
+                         // Check if AI flagged this specific attribute
+                         var mismatch = mismatches.find(function(m){ return m.field && m.field.toLowerCase() === attrKey.toLowerCase(); });
+                         
+                         // ONLY render the row if it's a mismatch!
+                         if (mismatch) {
+                             var statColor = '#dc2626';
+                             var statIcon = '❌ ';
+                             var bg = '#fef2f2';
+                             var imageVal = mismatch.imageValue;
+                             
+                             html += '<tr style="border-bottom:1px solid #f3f4f6; background:'+bg+';">' +
+                                     '<td style="padding:10px 8px; font-weight:600; color:#374151;">' + esc(attrKey) + '</td>' +
+                                     '<td style="padding:10px 8px; color:#4b5563;">' + esc(textVal) + '</td>' +
+                                     '<td style="padding:10px 8px; font-weight:700; color:'+statColor+';">' + statIcon + esc(imageVal) + '</td>' +
+                                     '</tr>';
+                         }
+                     });
+                 }
+                 html += '</table>';
+             }
          }
          html += '</div>';
      });
@@ -1435,19 +1457,18 @@ function runAnalysis(manual){
      if(allDescsSame) {
          html += '<div class="match-all" style="animation:slideUp .4s .25s ease both;">';
          html += '<div class="match-all-hdr">✓ MATCHING DESCRIPTION</div>';
-         html += '<div style="font-size:10px; color:#444; max-height:100px; overflow-y:auto; line-height:1.4;">' + (esc(products[0].description) || '<i style="color:#ccc">Empty</i>') + '</div>';
+         html += '<div style="font-size:13px; color:#333; max-height:250px; overflow-y:auto; line-height:1.5; white-space:pre-wrap;">' + (esc(products[0].description) || '<span style="color:#9ca3af; font-weight:500;">Empty</span>') + '</div>';
          html += '</div>';
      } else {
          html += '<div class="diff-table" style="animation:slideUp .4s .25s ease both;">';
          html += '<div class="diff-hdr" style="background:#fdecea;color:#c0392b;border-bottom:1px solid #f5b7b7;">⚠ DIFFERING DESCRIPTIONS</div>';
-         html += '<div class="diff-col-hdr">';
-         for(var i=0;i<n;i++) html += '<div>'+esc(getGTINLabel(products[i], i))+'</div>';
-         html += '</div>';
-         html += '<div class="drow"><div class="dvals">';
          products.forEach(function(p, i) {
-             html += '<div class="dval" style="font-size:10px; max-height:100px; overflow-y:auto; border-right:1px solid #eee; padding:6px; font-weight:normal;">' + (esc(p.description) || '<i style="color:#ccc">Empty</i>') + '</div>';
+             html += '<div style="padding:12px; border-bottom:1px solid #f5f5f5;">';
+             html += '<div style="font-size:11px; font-weight:700; color:#666; margin-bottom:6px; text-transform:uppercase;">'+esc(getGTINLabel(p, i))+'</div>';
+             html += '<div style="font-size:13px; color:#333; line-height:1.5; white-space:pre-wrap; max-height:200px; overflow-y:auto;">' + (esc(p.description) || '<span style="color:#9ca3af; font-weight:500;">Empty</span>') + '</div>';
+             html += '</div>';
          });
-         html += '</div></div></div>';
+         html += '</div>';
      }
     
      showBody(html);

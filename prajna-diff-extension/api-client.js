@@ -26,7 +26,7 @@ window.analyzeProductWithGemini = async function(product) {
       imageUrls: imageUrls
     };
 
-    const response = await fetch('http://localhost:8000/api/analyze-column', {
+    const response = await fetch('http://localhost:8080/api/analyze-column', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
