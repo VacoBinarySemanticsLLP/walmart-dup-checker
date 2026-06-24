@@ -59,7 +59,7 @@ window.analyzeProductWithGemini = async function(product) {
 window.analyzeBatchWithGemini = async function(products, forceRefresh = false) {
   console.log(`🤖 DupCheck AI: Preparing to send batch of ${products.length} products to AI...`);
   try {
-    const payloadProducts = products.map(p => {
+    const payloadProducts = products.map((p, idx) => {
       const imageUrls = [];
       if (p.imgs_main && p.imgs_main.length > 0) {
           imageUrls.push(...p.imgs_main);
@@ -99,8 +99,11 @@ window.analyzeBatchWithGemini = async function(products, forceRefresh = false) {
         }
       }
 
+      let finalId = 'GTIN#' + (idx + 1);
+      if (prodId && !prodId.startsWith('GTIN#')) finalId += ' (' + prodId + ')';
+
       return {
-        id: prodId,
+        id: finalId,
         title: p.name || '',
         description: finalDesc.trim(),
         attributes: p.attrs || {},
