@@ -158,7 +158,7 @@ wrap.innerHTML =
      '<div class="logo-box">⚡</div>'+
      '<div style="flex:1"><div class="hdr-title">DupCheck</div><div class="hdr-sub">Duplicate Detection Evaluator</div></div>'+
      '<div class="hdr-btns">'+
-       '<button class="hdr-btn" id="translatebtn" title="Translate to English" style="font-size:12px">A/文</button>'+
+       '<button class="hdr-btn" id="translatebtn" title="Translate to English" style="font-size:12px; font-weight:bold;">EN</button>'+
        '<button class="hdr-btn" id="minbtn" title="Minimize">—</button>'+
      '</div>'+
    '</div>'+
@@ -226,22 +226,22 @@ async function toggleTranslate() {
   _translateEnabled = !_translateEnabled;
   var btn = shadow.getElementById('translatebtn');
   btn.style.background = _translateEnabled ? '#2ecc71' : 'rgba(255,255,255,.15)';
-  var bodyEl = shadow.getElementById('body');
   
   if (_translateEnabled) {
-    _originalBodyHTML = bodyEl.innerHTML;
+    _originalBodyHTML = wrap.innerHTML;
     var scanCard = document.createElement('div');
     scanCard.className = 'scan-card';
     scanCard.style.marginTop = '10px';
     scanCard.innerHTML = '<div class="scan-txt">Translating to English...</div>';
-    bodyEl.appendChild(scanCard);
+    shadow.getElementById('body').appendChild(scanCard);
     
-    var walk = document.createTreeWalker(bodyEl, NodeFilter.SHOW_TEXT, null, false);
+    // Walk over the ENTIRE wrap so headers and footers are translated too
+    var walk = document.createTreeWalker(wrap, NodeFilter.SHOW_TEXT, null, false);
     var nodes = [];
     var n;
     while(n = walk.nextNode()) {
       var t = n.nodeValue;
-      if (t.trim().length > 0 && !/^[\d\s\.,;:!@#\$%\^&\*\(\)\-_\+=\[\]\{\}\|\\<>\?\/]+$/.test(t)) {
+      if (t.trim().length > 0 && !/^[\d\s\.,;:!@#\$%\^&\*\(\)\-_\+=\[\]\{\}\|\\<>\?\/]+$/.test(t) && t.indexOf('EN') === -1) {
         nodes.push({node: n, text: t});
       }
     }
@@ -259,7 +259,13 @@ async function toggleTranslate() {
     if (scanCard.parentNode) scanCard.parentNode.removeChild(scanCard);
   } else {
     if (_originalBodyHTML) {
-      bodyEl.innerHTML = _originalBodyHTML;
+      wrap.innerHTML = _originalBodyHTML;
+      // Re-bind the click handlers since wrap.innerHTML destroyed them
+      shadow.getElementById('minbtn').onclick    = minimizePanel;
+      shadow.getElementById('translatebtn').onclick = toggleTranslate;
+      shadow.getElementById('rerun').onclick     = function(){ runAnalysis(true); };
+      shadow.getElementById('analyzebtn').onclick= function(){ runAnalysis(false); };
+      shadow.getElementById('translatebtn').style.background = 'rgba(255,255,255,.15)';
     }
   }
 }
