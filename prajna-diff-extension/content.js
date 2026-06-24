@@ -1275,39 +1275,28 @@ function runAnalysis(manual){
              if (c0.reason) primaryReason = c0.reason;
          }
          
-         var vClass = isDup ? "dup" : (primaryAction.indexOf("Bad Data")>=0 ? "nsbd" : "nd");
-         var vIcon = isDup ? "✓" : (primaryAction.indexOf("Bad Data")>=0 ? "⚠️" : "❌");
+         // Always show the cluster breakdown now that the single verdict card is removed
+         html += '<div class="diff-table" style="animation:slideUp .4s .08s ease both; margin-bottom:12px;">';
+         html += '<div class="diff-hdr" style="background:#eef2ff;border-color:#c7d2fe;color:#4f46e5; font-size:14px;">'+
+            '🤖 AI Clusters <span class="diff-badge" style="background:#4f46e5">'+clusterCount+'</span>'+
+          '</div>';
          
-         html += '<div class="verdict-card ' + vClass + '" style="animation:slideUp .4s .08s ease both;">';
-         html += '<div class="v-icon">' + vIcon + '</div>';
-         html += '<div class="v-txt" style="font-size:18px; margin-bottom:8px;">' + esc(primaryAction) + '</div>';
-         html += '<div class="v-reason" style="font-size:14px; font-weight:500; color:#333">' + esc(primaryReason) + '</div>';
-         html += '</div>';
-         
-         // Only show the cluster breakdown if there are multiple, to keep it clean
-         if (clusterCount > 1) {
-             html += '<div class="diff-table" style="animation:slideUp .4s .08s ease both; margin-bottom:12px;">';
-             html += '<div class="diff-hdr" style="background:#eef2ff;border-color:#c7d2fe;color:#4f46e5; font-size:14px;">'+
-                '🤖 AI Clusters <span class="diff-badge" style="background:#4f46e5">'+clusterCount+'</span>'+
-              '</div>';
+          apiResult.horizontal_clustering.forEach(function(c) {
+             var actionText = c.recommended_action || c.cluster_name;
+             var isBadData = actionText.indexOf('Bad Data') >= 0;
+             var badgeColor = isBadData ? '#dc2626' : '#4f46e5';
+             var badgeBg = isBadData ? '#fef2f2' : '#eef2ff';
+             var borderColor = isBadData ? '#fca5a5' : '#c7d2fe';
              
-              apiResult.horizontal_clustering.forEach(function(c) {
-                 var actionText = c.recommended_action || c.cluster_name;
-                 var isBadData = actionText.indexOf('Bad Data') >= 0;
-                 var badgeColor = isBadData ? '#dc2626' : '#4f46e5';
-                 var badgeBg = isBadData ? '#fef2f2' : '#eef2ff';
-                 var borderColor = isBadData ? '#fca5a5' : '#c7d2fe';
-                 
-                 html += '<div style="padding:12px; border-bottom:1px solid #f3f4f6; background:#fff;">' +
-                     '<div style="display:flex; align-items:center; margin-bottom:8px;">' +
-                     '<span style="background:'+badgeBg+'; color:'+badgeColor+'; padding:4px 8px; border-radius:4px; font-size:12px; font-weight:700; border:1px solid '+borderColor+';">' + esc(actionText) + '</span>' +
-                     '</div>' +
-                     '<div style="font-size:13px; color:#1f2937; margin-bottom:6px;"><b>Products:</b> ' + esc(c.product_ids.join(', ')) + '</div>' +
-                     '<div style="font-size:13px; color:#4b5563; line-height:1.5;">' + esc(c.reason) + '</div>' +
-                     '</div>';
-              });
-              html += '</div>';
-         }
+             html += '<div style="padding:12px; border-bottom:1px solid #f3f4f6; background:#fff;">' +
+                 '<div style="display:flex; align-items:center; margin-bottom:8px;">' +
+                 '<span style="background:'+badgeBg+'; color:'+badgeColor+'; padding:4px 8px; border-radius:4px; font-size:12px; font-weight:700; border:1px solid '+borderColor+';">' + esc(actionText) + '</span>' +
+                 '</div>' +
+                 '<div style="font-size:13px; color:#1f2937; margin-bottom:6px;"><b>Products:</b> ' + esc(c.product_ids.join(', ')) + '</div>' +
+                 '<div style="font-size:13px; color:#4b5563; line-height:1.5;">' + esc(c.reason) + '</div>' +
+                 '</div>';
+          });
+          html += '</div>';
      }
 
      // 1.5 Image vs Text Extraction Table
@@ -1427,50 +1416,7 @@ function runAnalysis(manual){
      }
 
 
-     // 5. Extracted Images
-     html += '<div class="img-section" style="animation:slideUp .4s .2s ease both;"><div class="img-sec-hdr">Extracted Images</div><div class="multi-scroll"><div style="display:flex;gap:1px;background:#f0f0f0;">';
-     products.forEach(function(p, i){
-        html += '<div class="img-cell"><div class="img-lbl">'+esc(getGTINLabel(p, i))+'</div><div style="display:flex; flex-wrap:wrap; gap:4px; justify-content:center;">';
-        var allImgs = [];
-        if (p.imgs_main) allImgs.push.apply(allImgs, p.imgs_main);
-        else if (p.img1) allImgs.push(p.img1);
-        if (p.imgs_sec) allImgs.push.apply(allImgs, p.imgs_sec);
-        else if (p.img2) allImgs.push(p.img2);
-        if (p.imageUrls && allImgs.length === 0) allImgs.push.apply(allImgs, p.imageUrls);
-
-
-        allImgs = allImgs.filter(function(item, pos) { return allImgs.indexOf(item) === pos; });
-        if(allImgs.length > 0) {
-            allImgs.forEach(function(src) {
-                html += '<img src="'+esc(src)+'" onerror="this.style.display=\'none\'" style="width:40px; height:40px; object-fit:contain; border-radius:4px; border:1px solid #ddd;">';
-            });
-        } else {
-            html += '<div style="font-size:8px;color:#aaa;padding:20px 0;">NO IMAGES</div>';
-        }
-        html += '</div></div>';
-     });
-     html += '</div></div></div>';
-
-
-     // 6. Descriptions
-     var allDescsSame = products.every(function(p) { return p.description === products[0].description; });
-     if(allDescsSame) {
-         html += '<div class="match-all" style="animation:slideUp .4s .25s ease both;">';
-         html += '<div class="match-all-hdr">✓ MATCHING DESCRIPTION</div>';
-         html += '<div style="font-size:13px; color:#333; max-height:250px; overflow-y:auto; line-height:1.5; white-space:pre-wrap;">' + (esc(products[0].description) || '<span style="color:#9ca3af; font-weight:500;">Empty</span>') + '</div>';
-         html += '</div>';
-     } else {
-         html += '<div class="diff-table" style="animation:slideUp .4s .25s ease both;">';
-         html += '<div class="diff-hdr" style="background:#fdecea;color:#c0392b;border-bottom:1px solid #f5b7b7;">⚠ DIFFERING DESCRIPTIONS</div>';
-         products.forEach(function(p, i) {
-             html += '<div style="padding:12px; border-bottom:1px solid #f5f5f5;">';
-             html += '<div style="font-size:11px; font-weight:700; color:#666; margin-bottom:6px; text-transform:uppercase;">'+esc(getGTINLabel(p, i))+'</div>';
-             html += '<div style="font-size:13px; color:#333; line-height:1.5; white-space:pre-wrap; max-height:200px; overflow-y:auto;">' + (esc(p.description) || '<span style="color:#9ca3af; font-weight:500;">Empty</span>') + '</div>';
-             html += '</div>';
-         });
-         html += '</div>';
-     }
-    
+     // Extracted Images and Descriptions removed per user request
      showBody(html);
 
 
