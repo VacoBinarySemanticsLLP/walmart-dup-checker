@@ -32,7 +32,7 @@ var css = document.createElement('style');
 css.textContent = `
 *{box-sizing:border-box;margin:0;padding:0;font-family:'Segoe UI',system-ui,sans-serif;}
 #wrap{
- width:var(--panel-w,360px);height:calc(100vh - 60px);background:#f0f2ff;
+ width:var(--panel-w,440px);height:calc(100vh - 60px);background:#f0f2ff;
  border-left:1px solid #c8caff;
  box-shadow:-4px 0 20px rgba(0,0,0,.15);
  display:flex;flex-direction:column;overflow:hidden;
@@ -121,22 +121,22 @@ css.textContent = `
 .sop-lbl{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#3d3df5;margin-bottom:6px;}
 .sop-txt{font-size:11px;color:#333;line-height:1.6;font-weight:500;}
 .match-all{background:#e8faf0;border:1px solid #a9dfbf;border-radius:10px;padding:12px;margin-bottom:10px;animation:slideUp .4s .2s ease both;}
-.match-all-hdr{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#1a7f4b;margin-bottom:8px;}
+.match-all-hdr{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#1a7f4b;margin-bottom:8px;}
 .match-row{display:flex;padding:4px 0;border-bottom:1px solid rgba(0,0,0,.05);}
 .match-row:last-child{border-bottom:none;}
-.match-field{font-size:11px;font-weight:600;color:#444;flex:0 0 130px;}
-.match-val{font-size:11px;font-weight:700;color:#1a7f4b;word-break:break-word;}
+.match-field{font-size:13px;font-weight:600;color:#444;flex:0 0 130px;}
+.match-val{font-size:13px;font-weight:700;color:#1a7f4b;word-break:break-word;}
 .diff-table{background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 1px 6px rgba(0,0,0,.07);margin-bottom:10px;animation:slideUp .4s .25s ease both;}
-.diff-hdr{display:flex;background:#fdecea;border-bottom:1px solid #f5b7b7;padding:7px 12px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:#c0392b;align-items:center;justify-content:space-between;}
-.diff-badge{background:#c0392b;color:#fff;font-size:8px;padding:2px 7px;border-radius:10px;font-weight:700;}
+.diff-hdr{display:flex;background:#fdecea;border-bottom:1px solid #f5b7b7;padding:7px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:#c0392b;align-items:center;justify-content:space-between;}
+.diff-badge{background:#c0392b;color:#fff;font-size:10px;padding:2px 7px;border-radius:10px;font-weight:700;}
 .diff-col-hdr{display:flex;background:#fafafa;border-bottom:1px solid #f0f0f0;}
-.diff-col-hdr div{flex:1;padding:4px 10px;font-size:8px;font-weight:700;text-transform:uppercase;color:#aaa;border-right:1px solid #f0f0f0;}
+.diff-col-hdr div{flex:1;padding:6px 10px;font-size:10px;font-weight:700;text-transform:uppercase;color:#888;border-right:1px solid #f0f0f0;}
 .diff-col-hdr div:last-child{border-right:none;}
 .drow{border-bottom:1px solid #f8f8f8;background:#fff;}
 .drow:last-child{border-bottom:none;}
-.dlbl{padding:4px 10px 2px;font-size:9px;font-weight:700;color:#777;text-transform:uppercase;background:#fafafa;border-bottom:1px solid #f5f5f5;}
+.dlbl{padding:6px 10px 2px;font-size:12px;font-weight:700;color:#777;background:#fafafa;border-bottom:1px solid #f5f5f5;}
 .dvals{display:flex;}
-.dval{flex:1;padding:5px 10px 6px;font-size:11px;font-weight:600;line-height:1.4;word-break:break-word;border-right:1px solid #f5f5f5;min-height:28px;}
+.dval{flex:1;padding:6px 10px 8px;font-size:13px;font-weight:600;line-height:1.4;word-break:break-word;border-right:1px solid #f5f5f5;min-height:28px;}
 .dval:last-child{border-right:none;}
 .dval.red{background:#fff5f5;color:#c0392b;}
 .dval.grn{background:#f0fff4;color:#1a7f4b;}
@@ -963,35 +963,51 @@ if(hasGTINs()){
 
 // SPA URL change detector
 var _lastUrl = window.location.href;
+var _lastGTINsScraped = ""; // Track the last extracted items to prevent stale data runs
+
 setInterval(function() {
   if (window.location.href !== _lastUrl) {
     _lastUrl = window.location.href;
-    console.log("🤖 DupCheck AI: URL changed, resetting analysis state.");
     
-    // Immediately lock analysis so it doesn't instantly fire on the old stale table
+    // Only auto-run if we are actually on the review-group comparison page
+    if (_lastUrl.toLowerCase().indexOf('review-group') === -1) {
+       minimizePanel();
+       if(pill) pill.style.setProperty('display','none','important');
+       _analyzed = false;
+       return;
+    }
+    
+    // Valid review page: ensure panel/pill is active
+    if(pill) pill.style.setProperty('display','flex','important');
+    openPanel();
+    console.log("🤖 DupCheck AI: URL changed to a valid review page, resetting analysis state.");
+    
+    // Immediately lock analysis and clear old trackers
     _analyzed = true; 
-    
-    // Reset UI to waiting state
-    showBody('<div class="scan-card"><div class="scan-bars"><div class="scan-bar"></div><div class="scan-bar"></div><div class="scan-bar"></div><div class="scan-bar"></div><div class="scan-bar"></div></div><div class="scan-txt">Waiting for WALLE…</div><div class="scan-sub">Auto-analyzes when table loads</div></div>');
-    
-    // Clear old trackers
     if(_obs) _obs.disconnect();
     clearInterval(_timer);
     
-    // Wait 2.5 seconds for React to unmount the old table and fetch/render the new one
-    setTimeout(function() {
-      _analyzed = false; // Unlock analysis
-      
-      _obs = new MutationObserver(function(){
-        if(!_analyzed && hasGTINs()) triggerAnalysis();
-      });
-      _obs.observe(document.body, {childList:true, subtree:true, attributes:false});
-      
-      _timer = setInterval(function(){
-        if(_analyzed){ clearInterval(_timer); return; }
-        if(hasGTINs()) triggerAnalysis();
-      }, 100);
-    }, 2500);
+    // Reset UI to waiting state instantly so it doesn't show old page data
+    showBody('<div class="scan-card" style="margin-top:20px;"><div class="scan-bars"><div class="scan-bar"></div><div class="scan-bar"></div><div class="scan-bar"></div><div class="scan-bar"></div><div class="scan-bar"></div></div><div class="scan-txt">Waiting for WALLE…</div><div class="scan-sub">Fetching new product data</div></div>');
+    
+    // Wait until React replaces the old table with the new one
+    var attempts = 0;
+    var waitTimer = setInterval(function() {
+       attempts++;
+       if(!hasGTINs() && attempts < 50) return; // wait for DOM to exist
+       
+       var newProds = [];
+       try { newProds = extractProducts(); } catch(e){}
+       var currentGTINsStr = newProds.map(function(p){ return p.gtin || p.name; }).join(",");
+       
+       // Trigger only if the GTINs changed, or if it timed out (failsafe after 3s)
+       if (currentGTINsStr !== _lastGTINsScraped || attempts > 20) {
+           clearInterval(waitTimer);
+           _lastGTINsScraped = currentGTINsStr; // Update tracked string
+           _analyzed = false; // Unlock
+           triggerAnalysis();
+       }
+    }, 150);
   }
 }, 500);
 
@@ -1189,6 +1205,7 @@ function runAnalysis(manual){
    try{
      var products=extractProducts();
      if(!products||products.length<2) return;
+     _lastGTINsScraped = products.map(function(p){ return p.gtin || p.name; }).join(",");
 
 
      // UPDATE UI to show AI vision is running
@@ -1230,9 +1247,6 @@ function runAnalysis(manual){
      html += '</div>';
 
 
-
-
-
      // 2. Verdict / AI Result AT THE TOP
      if (apiResult.horizontal_clustering && apiResult.horizontal_clustering.length > 0) {
          var primaryAction = "Duplicate";
@@ -1267,57 +1281,89 @@ function runAnalysis(manual){
          
          html += '<div class="verdict-card ' + vClass + '" style="animation:slideUp .4s .08s ease both;">';
          html += '<div class="v-icon">' + vIcon + '</div>';
-         html += '<div class="v-txt" style="font-size:16px; margin-bottom:8px;">' + esc(primaryAction) + '</div>';
-         html += '<div class="v-reason" style="font-size:13px; font-weight:500; color:#333">' + esc(primaryReason) + '</div>';
+         html += '<div class="v-txt" style="font-size:18px; margin-bottom:8px;">' + esc(primaryAction) + '</div>';
+         html += '<div class="v-reason" style="font-size:14px; font-weight:500; color:#333">' + esc(primaryReason) + '</div>';
          html += '</div>';
          
          // Only show the cluster breakdown if there are multiple, to keep it clean
          if (clusterCount > 1) {
              html += '<div class="diff-table" style="animation:slideUp .4s .08s ease both">';
-             html += '<div class="diff-hdr" style="background:#f0f4ff;border-color:#c5c8ff;color:#3d3df5">'+
+             html += '<div class="diff-hdr" style="background:#f0f4ff;border-color:#c5c8ff;color:#3d3df5; font-size:14px;">'+
                 '🤖 AI Clusters <span class="diff-badge" style="background:#3d3df5">'+clusterCount+'</span>'+
               '</div>';
              
               apiResult.horizontal_clustering.forEach(function(c) {
                  html += '<div class="drow" style="flex-direction:column; align-items:stretch;">' +
-                     '<div class="dlbl" style="color:#3d3df5;">' + esc(c.recommended_action || c.cluster_name) + '</div>' +
-                     '<div style="padding:6px 10px 2px; font-size:11px; color:#333;"><b>Products:</b> ' + esc(c.product_ids.join(', ')) + '</div>' +
-                     '<div style="padding:4px 10px 8px; font-size:11px; font-style:italic; color:#666;">' + esc(c.reason) + '</div>' +
+                     '<div class="dlbl" style="color:#3d3df5; font-size:14px;">' + esc(c.recommended_action || c.cluster_name) + '</div>' +
+                     '<div style="padding:6px 10px 2px; font-size:13px; color:#333;"><b>Products:</b> ' + esc(c.product_ids.join(', ')) + '</div>' +
+                     '<div style="padding:4px 10px 8px; font-size:13px; font-style:italic; color:#666;">' + esc(c.reason) + '</div>' +
                      '</div>';
               });
               html += '</div>';
          }
      }
 
-
-     // 3. Phase 1 (Bad Data)
-     var badData = apiResult.vertical_checks ? apiResult.vertical_checks.filter(function(v){ return v.has_bad_data; }) : [];
-     if (badData.length > 0) {
-       html+='<div class="diff-table" style="animation:slideUp .4s .1s ease both">'+
-         '<div class="diff-hdr" style="background:#fdecea;border-color:#f5b7b7;color:#c0392b">'+
-           '🔴 Phase 1: Bad Data Detected <span class="diff-badge" style="background:#c0392b">'+badData.length+'</span>'+
-         '</div>';
-       badData.forEach(function(v){
-           if (v.mismatch_details && v.mismatch_details.length > 0) {
-             v.mismatch_details.forEach(function(m) {
-                html += '<div class="drow" style="flex-direction:column; align-items:stretch;">'+
-                        '<div class="dlbl" style="color:#92400e; width:100%;">' + esc(v.product_id) + ' · ' + esc(m.field) + '</div>'+
-                        '<div class="dvals">'+
-                          '<div class="dval red"><b>Image:</b> ' + esc(m.imageValue) + '</div>'+
-                          '<div class="dval red"><b>Attr:</b> ' + esc(m.textValue) + '</div>'+
-                        '</div>'+
-                        '<div style="padding:4px 10px 8px; font-size:10px; font-style:italic; color:#666;">'+esc(v.reason)+'</div>'+
-                        '</div>';
+     // 1.5 Image vs Text Extraction Table
+     html += '<div class="diff-table" style="animation:slideUp .4s .06s ease both; margin-top: 12px;">';
+     html += '<div class="diff-hdr" style="background:#eef2ff;border-color:#c7d2fe;color:#4f46e5; font-size:14px;">'+
+        '🖼️ Image vs Text Verification'+
+      '</div>';
+     (apiResult.vertical_checks || []).forEach(function(v) {
+         html += '<div class="drow" style="flex-direction:column; align-items:stretch; padding-bottom: 0;">' +
+            '<div class="dlbl" style="color:#374151; font-size:14px; font-weight:700; margin-bottom:6px;">' + esc(v.product_id) + '</div>';
+            
+         // Find matching product object to get its raw attributes
+         var prod = products.find(function(p){ return p.id === v.product_id; }) || {attrs:{}};
+         var prodAttrs = prod.attrs || {};
+         var mismatches = v.mismatch_details || [];
+         
+         // Show the ultra-brief summary from AI so user knows it looked at the image
+         if (v.extracted_image_summary) {
+            html += '<div style="margin-bottom:10px; padding:10px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:4px; font-size:13px; color:#166534;">' + 
+                    '<b>👁️ AI Vision Specs:</b> ' + esc(v.extracted_image_summary) + '</div>';
+         }
+         
+         html += '<table style="width:100%; border-collapse:collapse; font-size:14px; margin-bottom:10px; text-align:left;">';
+         html += '<tr style="border-bottom:1px solid #e5e7eb; color:#6b7280;">' +
+                 '<th style="padding:8px; font-weight:600; width:25%;">Attribute</th>' +
+                 '<th style="padding:8px; font-weight:600; width:45%;">Product Description</th>' +
+                 '<th style="padding:8px; font-weight:600; width:30%;">Image Verification</th>' +
+                 '</tr>';
+                 
+         // Build the table using the frontend data!
+         var attrKeys = Object.keys(prodAttrs);
+         if (attrKeys.length === 0) {
+             html += '<tr><td colspan="3" style="padding:10px; text-align:center; color:#9ca3af; font-style:italic;">No text attributes found on page</td></tr>';
+         } else {
+             attrKeys.forEach(function(attrKey) {
+                 var textVal = prodAttrs[attrKey];
+                 
+                 // Check if AI flagged this specific attribute
+                 var mismatch = mismatches.find(function(m){ return m.field && m.field.toLowerCase() === attrKey.toLowerCase(); });
+                 
+                 var statColor = mismatch ? '#dc2626' : '#16a34a';
+                 var statIcon = mismatch ? '❌ ' : '✅ ';
+                 var bg = mismatch ? '#fef2f2' : 'transparent';
+                 var imageVal = mismatch ? mismatch.imageValue : 'Match';
+                 
+                 html += '<tr style="border-bottom:1px solid #f3f4f6; background:'+bg+';">' +
+                         '<td style="padding:10px 8px; font-weight:600; color:#374151;">' + esc(attrKey) + '</td>' +
+                         '<td style="padding:10px 8px; color:#4b5563;">' + esc(textVal) + '</td>' +
+                         '<td style="padding:10px 8px; font-weight:700; color:'+statColor+';">' + statIcon + esc(imageVal) + '</td>' +
+                         '</tr>';
              });
-           } else {
-                html += '<div class="drow" style="flex-direction:column; align-items:stretch;">'+
-                        '<div class="dlbl" style="color:#92400e; width:100%;">' + esc(v.product_id) + '</div>'+
-                        '<div style="padding:8px 10px; font-size:11px; color:#c0392b;">'+esc(v.reason)+'</div>'+
-                        '</div>';
-           }
-       });
-       html+='</div>';
-     }
+         }
+         html += '</table>';
+         
+         // If there is bad data, show the AI's reasoning right below the table
+         if (v.has_bad_data && v.reason) {
+             html += '<div style="background:#fef2f2; border-left:3px solid #dc2626; padding:10px; margin:6px 0 10px 0; font-size:13px; color:#991b1b;">' +
+                     '<b>Bad Data Detected:</b> ' + esc(v.reason) + '</div>';
+         }
+         html += '</div>';
+     });
+     html += '</div>';
+
 
 
      // 4. Attribute Table

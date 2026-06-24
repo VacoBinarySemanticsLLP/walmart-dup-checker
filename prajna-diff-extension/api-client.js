@@ -116,7 +116,7 @@ window.analyzeBatchWithGemini = async function(products, forceRefresh = false) {
     
     console.log(`🤖 DupCheck AI: Sending batch request to backend (Force Refresh: ${forceRefresh}):`, payload);
 
-    const response = await fetch('http://localhost:8000/api/analyze-batch', {
+    const response = await fetch('http://localhost:8080/api/analyze-batch', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: payloadStr

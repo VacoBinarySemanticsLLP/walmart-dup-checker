@@ -316,15 +316,15 @@ Respond with JSON only (no markdown, no backticks):
 {
   "vertical_checks": [
     {
-      "product_id": "string",
+      "product_id": "Exact string from the PRODUCT ID header (e.g. 'GTIN#1 (007...)')",
       "detected_category": "string",
       "matched_sop_rules": ["scenario_ids consulted"],
-      "primary_attributes_checked": ["attribute names"],
+      "extracted_image_summary": "string (ultra-brief 5-10 word summary of key visual specs seen in the image)",
       "has_bad_data": boolean,
-      "reason": "string (concise explanation of what is different and why)",
+      "reason": "string (ULTRA-SHORT 1-2 sentence summary. Focus only on the main difference or missing attribute. DO NOT write long paragraphs.)",
       "mismatch_details": [
         {
-          "field": "string",
+          "field": "string (only include fields that actually contradict)",
           "imageValue": "string",
           "textValue": "string"
         }
@@ -338,7 +338,7 @@ Respond with JSON only (no markdown, no backticks):
       "cluster_type": "string (duplicate|variant|unique|bad_data)",
       "recommended_action": "Exact string from the official actions list above",
       "matched_sop_rule": "scenario_id that determined this clustering",
-      "reason": "string (concise explanation of what is different and why)"
+      "reason": "string (ULTRA-SHORT 1-2 sentence summary. Focus only on the main difference or missing attribute. DO NOT write long paragraphs.)"
     }
   ]
 }
@@ -527,7 +527,11 @@ async def process_batch_analysis(products):
         data = json.loads(text)
         output_ids = {v['product_id'] for v in data.get('vertical_checks', [])}
         input_ids = {p.get('id', 'Unknown') for p in products}
-        missing_ids = input_ids - output_ids
+        
+        missing_ids = set()
+        for i_id in input_ids:
+            if not any(i_id in o_id or o_id in i_id for o_id in output_ids):
+                missing_ids.add(i_id)
 
         retries_left = MAX_RETRIES
         while missing_ids and retries_left > 0:
@@ -560,7 +564,11 @@ async def process_batch_analysis(products):
                 break
 
             retry_ids = {v['product_id'] for v in retry_data.get('vertical_checks', [])}
-            newly_missing = input_ids - retry_ids
+            newly_missing = set()
+            for i_id in input_ids:
+                if not any(i_id in o_id or o_id in i_id for o_id in retry_ids):
+                    newly_missing.add(i_id)
+                    
             recovered = len(missing_ids) - len(newly_missing)
             if recovered > 0:
                 print(f"  ✅ Retry recovered {recovered} product(s) "
