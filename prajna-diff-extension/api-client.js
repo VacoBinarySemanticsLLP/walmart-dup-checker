@@ -84,8 +84,23 @@ window.analyzeBatchWithGemini = async function(products, forceRefresh = false) {
       // Deduplicate images exactly
       const uniqueImageUrls = Array.from(new Set(imageUrls));
 
+      let prodId = p.gtin || '';
+      if (!prodId || prodId.startsWith('GTIN#')) {
+        const pid = p.attrs['Product ID'] || p.attrs['product id'] || '';
+        if (pid) {
+          prodId = pid;
+        } else {
+          const itemId = p.attrs['Item ID'] || p.attrs['item id'] || '';
+          if (itemId) {
+            prodId = itemId;
+          } else {
+            prodId = p.gtin || p.name || 'Unknown';
+          }
+        }
+      }
+
       return {
-        id: p.gtin || p.name || 'Unknown',
+        id: prodId,
         title: p.name || '',
         description: finalDesc.trim(),
         attributes: p.attrs || {},
