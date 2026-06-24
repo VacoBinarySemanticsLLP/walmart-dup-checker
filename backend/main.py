@@ -301,6 +301,7 @@ CRITICAL RULES FROM SOP:
 - When a rule specifies visual_check=REQUIRED, images MUST be verified
 - Bad data products go in their own cluster, never merged with others
 - Different sizes, model numbers, or finish types = SEPARATE clusters always
+- If items are 'Not a Duplicate' or 'unique', they MUST be placed in completely separate cluster objects. NEVER place unique items in the same product_ids array.
 - You MUST assign exactly ONE of the following official actions to each cluster:
   * "Duplicate"
   * "Not a Duplicate"
@@ -596,6 +597,31 @@ async def process_batch_analysis(products):
 
         if missing_ids:
             print(f"⚠ FINAL: {len(missing_ids)} product(s) still missing after retries: {missing_ids}")
+
+        # ── INTERCEPTOR: Auto-Split "Not a Duplicate" Clusters ──
+        # Gemini often groups non-duplicates to write a shared comparison reason.
+        # We forcibly split them here so the frontend sees distinct clusters.
+        if "horizontal_clustering" in data:
+            new_clusters = []
+            for cluster in data.get("horizontal_clustering", []):
+                action = cluster.get("recommended_action", "")
+                p_ids = cluster.get("product_ids", [])
+                
+                # If it's NOT a Duplicate but has multiple products, split them!
+                if action and action != "Duplicate" and len(p_ids) > 1:
+                    print(f"  🔪 INTERCEPTOR: Auto-splitting '{action}' cluster with {len(p_ids)} items.")
+                    for pid in p_ids:
+                        new_clusters.append({
+                            "cluster_name": cluster.get("cluster_name", "Unique Item"),
+                            "product_ids": [pid],
+                            "cluster_type": cluster.get("cluster_type", "unique"),
+                            "recommended_action": action,
+                            "matched_sop_rule": cluster.get("matched_sop_rule", ""),
+                            "reason": cluster.get("reason", "")
+                        })
+                else:
+                    new_clusters.append(cluster)
+            data["horizontal_clustering"] = new_clusters
 
         return {"status": "success", "data": data}
 

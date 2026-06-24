@@ -1252,7 +1252,10 @@ function runAnalysis(manual){
          } else {
              // 1 cluster, 0 bad data
              var c0 = apiResult.horizontal_clustering[0];
-             if (c0.recommended_action) primaryAction = c0.recommended_action;
+             if (c0.recommended_action) {
+                 primaryAction = c0.recommended_action;
+                 if (primaryAction !== "Duplicate") isDup = false;
+             }
              if (c0.reason) primaryReason = c0.reason;
          }
          
