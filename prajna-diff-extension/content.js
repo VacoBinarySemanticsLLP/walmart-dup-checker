@@ -961,24 +961,31 @@ setInterval(function() {
   if (window.location.href !== _lastUrl) {
     _lastUrl = window.location.href;
     console.log("🤖 DupCheck AI: URL changed, resetting analysis state.");
-    _analyzed = false;
+    
+    // Immediately lock analysis so it doesn't instantly fire on the old stale table
+    _analyzed = true; 
     
     // Reset UI to waiting state
     showBody('<div class="scan-card"><div class="scan-bars"><div class="scan-bar"></div><div class="scan-bar"></div><div class="scan-bar"></div><div class="scan-bar"></div><div class="scan-bar"></div></div><div class="scan-txt">Waiting for WALLE…</div><div class="scan-sub">Auto-analyzes when table loads</div></div>');
     
-    // Restart observer
+    // Clear old trackers
     if(_obs) _obs.disconnect();
-    _obs = new MutationObserver(function(){
-      if(!_analyzed && hasGTINs()) triggerAnalysis();
-    });
-    _obs.observe(document.body, {childList:true, subtree:true, attributes:false});
-    
-    // Restart interval
     clearInterval(_timer);
-    _timer = setInterval(function(){
-      if(_analyzed){ clearInterval(_timer); return; }
-      if(hasGTINs()) triggerAnalysis();
-    }, 100);
+    
+    // Wait 2.5 seconds for React to unmount the old table and fetch/render the new one
+    setTimeout(function() {
+      _analyzed = false; // Unlock analysis
+      
+      _obs = new MutationObserver(function(){
+        if(!_analyzed && hasGTINs()) triggerAnalysis();
+      });
+      _obs.observe(document.body, {childList:true, subtree:true, attributes:false});
+      
+      _timer = setInterval(function(){
+        if(_analyzed){ clearInterval(_timer); return; }
+        if(hasGTINs()) triggerAnalysis();
+      }, 100);
+    }, 2500);
   }
 }, 500);
 
@@ -1217,43 +1224,62 @@ function runAnalysis(manual){
      html += '</div>';
 
 
-     // 1.5 Image Specs Extracted
-     html += '<div class="diff-table" style="animation:slideUp .4s .06s ease both; margin-top: 12px;">';
-     html += '<div class="diff-hdr" style="background:#eef2ff;border-color:#c7d2fe;color:#4f46e5">'+
-        '🖼️ Image Specifications Extracted by AI'+
-      '</div>';
-     (apiResult.vertical_checks || []).forEach(function(v) {
-         var specs = v.extracted_image_specs || 'None';
-         var specColor = (specs.toLowerCase() === 'none') ? '#9ca3af' : '#4f46e5';
-         html += '<div class="drow" style="flex-direction:column; align-items:stretch;">' +
-            '<div class="dlbl" style="color:#374151;">' + esc(v.product_id) + '</div>' +
-            '<div style="padding:4px 10px 8px; font-size:12px; font-weight:500; color:' + specColor + ';">' + esc(specs) + '</div>' +
-            '</div>';
-     });
-     html += '</div>';
+
 
 
      // 2. Verdict / AI Result AT THE TOP
      if (apiResult.horizontal_clustering && apiResult.horizontal_clustering.length > 0) {
-         if (clusterCount === 1 && badDataCount === 0) {
-             html += '<div class="verdict-card dup" style="animation:slideUp .4s .08s ease both;"><div class="v-icon">✓</div><div class="v-txt">All ' + n + ' GTINs are identical</div><div class="v-reason">No bad data or clustering differences found by AI.</div></div>';
+         var primaryAction = "Duplicate";
+         var primaryReason = "No bad data or clustering differences found by AI.";
+         var isDup = (clusterCount === 1 && badDataCount === 0);
+         
+         // If there's bad data, the action is likely Bad Data
+         if (badDataCount > 0) {
+             primaryAction = "Not Sure - Bad Data";
+             primaryReason = "AI detected vertical contradictions between image and text attributes.";
+             isDup = false;
+         } else if (clusterCount > 1) {
+             // Find the first cluster that specifies a non-duplicate action
+             for(var i=0; i<apiResult.horizontal_clustering.length; i++) {
+                 var c = apiResult.horizontal_clustering[i];
+                 if (c.recommended_action && c.recommended_action !== "Duplicate") {
+                     primaryAction = c.recommended_action;
+                     primaryReason = c.reason || "AI separated these products into different clusters.";
+                     break;
+                 }
+             }
+             isDup = false;
          } else {
-            if (clusterCount > 1) {
-                html += '<div class="verdict-card nd" style="animation:slideUp .4s .08s ease both;"><div class="v-icon">❌</div><div class="v-txt">NOT A DUPLICATE</div><div class="v-reason">AI separated these products into ' + clusterCount + ' different clusters.</div></div>';
-            }
-            html += '<div class="diff-table" style="animation:slideUp .4s .08s ease both">';
-            html += '<div class="diff-hdr" style="background:#f0f4ff;border-color:#c5c8ff;color:#3d3df5">'+
-               '🤖 Phase 2: AI Duplicate Clusters <span class="diff-badge" style="background:#3d3df5">'+clusterCount+'</span>'+
-             '</div>';
-            
-             apiResult.horizontal_clustering.forEach(function(c) {
-                html += '<div class="drow" style="flex-direction:column; align-items:stretch;">' +
-                    '<div class="dlbl" style="color:#3d3df5;">' + esc(c.cluster_name) + '</div>' +
-                    '<div style="padding:6px 10px 2px; font-size:11px; color:#333;"><b>Products:</b> ' + esc(c.product_ids.join(', ')) + '</div>' +
-                    '<div style="padding:4px 10px 8px; font-size:11px; font-style:italic; color:#666;">' + esc(c.reason) + '</div>' +
-                    '</div>';
-             });
-             html += '</div>';
+             // 1 cluster, 0 bad data
+             var c0 = apiResult.horizontal_clustering[0];
+             if (c0.recommended_action) primaryAction = c0.recommended_action;
+             if (c0.reason) primaryReason = c0.reason;
+         }
+         
+         var vClass = isDup ? "dup" : (primaryAction.indexOf("Bad Data")>=0 ? "nsbd" : "nd");
+         var vIcon = isDup ? "✓" : (primaryAction.indexOf("Bad Data")>=0 ? "⚠️" : "❌");
+         
+         html += '<div class="verdict-card ' + vClass + '" style="animation:slideUp .4s .08s ease both;">';
+         html += '<div class="v-icon">' + vIcon + '</div>';
+         html += '<div class="v-txt" style="font-size:16px; margin-bottom:8px;">' + esc(primaryAction) + '</div>';
+         html += '<div class="v-reason" style="font-size:13px; font-weight:500; color:#333">' + esc(primaryReason) + '</div>';
+         html += '</div>';
+         
+         // Only show the cluster breakdown if there are multiple, to keep it clean
+         if (clusterCount > 1) {
+             html += '<div class="diff-table" style="animation:slideUp .4s .08s ease both">';
+             html += '<div class="diff-hdr" style="background:#f0f4ff;border-color:#c5c8ff;color:#3d3df5">'+
+                '🤖 AI Clusters <span class="diff-badge" style="background:#3d3df5">'+clusterCount+'</span>'+
+              '</div>';
+             
+              apiResult.horizontal_clustering.forEach(function(c) {
+                 html += '<div class="drow" style="flex-direction:column; align-items:stretch;">' +
+                     '<div class="dlbl" style="color:#3d3df5;">' + esc(c.recommended_action || c.cluster_name) + '</div>' +
+                     '<div style="padding:6px 10px 2px; font-size:11px; color:#333;"><b>Products:</b> ' + esc(c.product_ids.join(', ')) + '</div>' +
+                     '<div style="padding:4px 10px 8px; font-size:11px; font-style:italic; color:#666;">' + esc(c.reason) + '</div>' +
+                     '</div>';
+              });
+              html += '</div>';
          }
      }
 

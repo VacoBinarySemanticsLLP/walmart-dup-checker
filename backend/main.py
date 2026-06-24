@@ -300,8 +300,17 @@ CRITICAL RULES FROM SOP:
 - Attributes listed as "Ignore Attributes" in matching SOP rules must NOT affect decisions
 - When a rule specifies visual_check=REQUIRED, images MUST be verified
 - Bad data products go in their own cluster, never merged with others
-- Image specs (extracted text) take priority over table attributes for differentiation
 - Different sizes, model numbers, or finish types = SEPARATE clusters always
+- You MUST assign exactly ONE of the following official actions to each cluster:
+  * "Duplicate"
+  * "Not a Duplicate"
+  * "Not a Duplicate - Variant"
+  * "Not a Duplicate - Variant Attribute Data Not Available"
+  * "Not a Duplicate - Incorrect Variant Attribute Names"
+  * "Not a Duplicate - Incorrect Variant Attribute Name Data Not Available"
+  * "Not Duplicate - Different Compatibility"
+  * "Not Duplicate - Different Warranty"
+  * "Not Sure - Bad Data"
 
 Respond with JSON only (no markdown, no backticks):
 {
@@ -311,9 +320,8 @@ Respond with JSON only (no markdown, no backticks):
       "detected_category": "string",
       "matched_sop_rules": ["scenario_ids consulted"],
       "primary_attributes_checked": ["attribute names"],
-      "extracted_image_specs": "string or 'None'",
       "has_bad_data": boolean,
-      "reason": "string (detailed explanation)",
+      "reason": "string (concise explanation of what is different and why)",
       "mismatch_details": [
         {
           "field": "string",
@@ -328,8 +336,9 @@ Respond with JSON only (no markdown, no backticks):
       "cluster_name": "string (descriptive label)",
       "product_ids": ["string"],
       "cluster_type": "string (duplicate|variant|unique|bad_data)",
+      "recommended_action": "Exact string from the official actions list above",
       "matched_sop_rule": "scenario_id that determined this clustering",
-      "reason": "string (detailed explanation citing SOP rule)"
+      "reason": "string (concise explanation of what is different and why)"
     }
   ]
 }
