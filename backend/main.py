@@ -194,32 +194,10 @@ def get_cache_key(products):
 # ─────────────────────────────────────────────────────────────────────────────
 async def fetch_image(client_http: httpx.AsyncClient, url: str) -> dict:
     try:
-        avif_headers = {"Accept": "image/avif,image/webp,image/jpeg,*/*"}
-        raw_bytes = None
-        source_format = "JPEG"
-
-        avif_url = url
-        if url.lower().endswith('.jpeg'):
-            avif_url = url[:-5] + '.avif'
-        elif url.lower().endswith('.jpg'):
-            avif_url = url[:-4] + '.avif'
-
-        if avif_url != url:
-            try:
-                avif_response = await client_http.get(avif_url, timeout=10.0, headers=avif_headers)
-                if avif_response.status_code == 200:
-                    raw_bytes = avif_response.content
-                    source_format = "AVIF"
-                else:
-                    print(f"⚠️  AVIF not available (HTTP {avif_response.status_code}), falling back to JPEG")
-            except Exception as avif_err:
-                print(f"⚠️  AVIF fetch failed ({avif_err}), falling back to JPEG")
-
-        if raw_bytes is None:
-            response = await client_http.get(url, timeout=10.0)
-            response.raise_for_status()
-            raw_bytes = response.content
-            source_format = "JPEG"
+        response = await client_http.get(url, timeout=10.0)
+        response.raise_for_status()
+        raw_bytes = response.content
+        source_format = "ORIGINAL"
 
         original_size_kb = len(raw_bytes) / 1024
         img = Image.open(io.BytesIO(raw_bytes))
@@ -298,27 +276,84 @@ INSTRUCTIONS:
    Apply the SOP rules for clustering decisions — check which scenario matches and use
    its DECISION (Duplicate / Not a Duplicate / Not sure - Bad data).
 
+Before performing ANY comparison, independently extract the following attributes from BOTH the structured text and the product images.
+
+Extract each attribute separately. Do NOT combine or normalize different attributes into a single value.
+
+- Brand
+- Product Name
+- Model Number
+- Size / Dimensions
+- Capacity
+- Weight
+- Color
+- Finish
+- Material
+- Flavor
+- Scent
+- Dosage Strength
+- Formulation
+- Package Type
+- Package Count
+- Units Per Package
+- Total Units
+- Compatibility
+- Warranty
+
+Rules:
+
+- Keep Package Count, Units Per Package, and Total Units as separate attributes.
+- Never merge multiple quantity attributes into a single "Count".
+- Preserve packaging hierarchy exactly as shown.
+- If an attribute cannot be confidently extracted from either text or image, return it as "Unknown". Never infer missing values.
+
 CRITICAL RULES FROM SOP:
 - Attributes listed as "Ignore Attributes" in matching SOP rules must NOT affect decisions
 - Do not flag 'Bad Data' just because a specific attribute is missing (-) if that information is clearly stated in the title, description, or under a synonymous attribute name.
 - When a rule specifies visual_check=REQUIRED, images MUST be verified
-- COUNT VERIFICATION (ALL CATEGORIES): Pay extremely close attention to the Unit of Measurement (UOM) in images and text. Distinguish between 'Package-Level Count' (e.g., 1 Box, 1 Case) and 'Item-Level Count' (e.g., 60 Pills, 12 Pencils, 24 Bottles). If an attribute like 'Total Count' or 'Multipack Quantity' is '1', it almost always refers to '1 retail package being sold'. Do NOT flag 'Total Count: 1' as a contradiction against 'Count Per Pack: 60' or a product image showing '60 Ct'. As long as the hierarchical math (Packages × Items Per Package) is logically consistent, it is a PERFECT match, not Bad Data.
+- COUNT VERIFICATION (ALL CATEGORIES): Pay extremely close attention to the Unit of Measurement (UOM) in images and text. Distinguish between 'Package-Level Count' (e.g., 1 Box, 1 Case), 'Item-Level Count' (e.g., 60 Pills, 80 Pellets), and 'Weight/Volume' (e.g., 0.3 Ounces, 50ml). Do NOT flag different types of measurements as contradictions (e.g., 'Net Content: 0.3 Ounces' vs 'Count Per Pack: 80'). If an attribute like 'Total Count' or 'Multipack Quantity' is '1', it almost always refers to '1 retail package being sold'. Do NOT flag 'Total Count: 1' as a contradiction against 'Count Per Pack: 80' or a product image showing '80 Ct'. As long as the measurements describe different aspects (weight vs count vs packages), it is a PERFECT match, not Bad Data.
 - PACKAGING HORIZONTAL RULES: A 2x30 configuration (2 bottles of 30) is NOT a duplicate of a 1x60 configuration (1 bottle of 60). Even if total units are the same, different package structures must be clustered separately (e.g., 'Not a Duplicate - Variant').
 - PACKAGING TYPE RULES: Pay attention to the physical container type. A bottle is NOT a duplicate of a blister pack, and a blister pack is NOT a duplicate of a strip. Cluster these separately.
-- CLUSTERING LOGIC: Group identical/duplicate products into a single cluster together in the `product_ids` array. 
-- CLUSTERING LOGIC: If a product is a variant (e.g., different packaging type or configuration) or completely unique from the others, it must be placed in its own standalone cluster.
-- CLUSTERING LOGIC: Bad data products MUST be separated into their own individual clusters, never merged with any other product.
-- Different sizes, model numbers, or finish types = SEPARATE clusters always
+- COMPATIBILITY OVERRIDES BAD DATA: If attributes like 'Actual Color' or 'Color' contain vehicle compatibility data (e.g. 'For 2022-2023 Chevrolet Silverado'), do NOT flag this as a color contradiction or 'Bad Data' in the vertical check. Treat it as valid compatibility information.
+- CLUSTERING LOGIC - IDENTICALS: Group identical/duplicate products together in the SAME cluster.
+- CLUSTERING LOGIC - VARIANTS & UNIQUE: If a product is a variant, a completely unique item, or "Not a Duplicate", it MUST be placed in its OWN SEPARATE, STANDALONE cluster. Do NOT group variants or non-duplicates together with the primary product or with each other. Each gets its own cluster.
+- CLUSTERING LOGIC - BAD DATA: Bad data products MUST be separated into their own individual clusters, never merged with any other product.
+- CLUSTERING LOGIC - DIFFERENT ATTRIBUTES: Different sizes, model numbers, finish types, or compatibilities = SEPARATE clusters always.
 - You MUST assign exactly ONE of the following official actions to each cluster:
-  * "Duplicate" (Use if the cluster contains multiple identical items, or if the item perfectly matches the primary group)
-  * "Not a Duplicate" (Use if the cluster contains a unique item completely different from the primary group)
-  * "Not a Duplicate - Variant"
-  * "Not a Duplicate - Variant Attribute Data Not Available"
-  * "Not a Duplicate - Incorrect Variant Attribute Names"
-  * "Not a Duplicate - Incorrect Variant Attribute Name Data Not Available"
-  * "Not Duplicate - Different Compatibility"
-  * "Not Duplicate - Different Warranty"
-  * "Not Sure - Bad Data"
+  ACTION SELECTION HIERARCHY (MANDATORY)
+
+When multiple conditions apply, ALWAYS select exactly ONE action using the following priority order:
+
+1. "Not Duplicate - Different Compatibility"
+   Use when compatibility differs (vehicle, device, model, application, etc.), regardless of other variant differences or missing data.
+
+2. "Not Sure - Bad Data"
+   Use if:
+   - Required attributes cannot be verified.
+   - Image and text contain unresolved contradictions.
+   - OCR evidence is insufficient for required verification.
+   - Critical product information is missing and prevents reliable comparison.
+
+3. "Not Duplicate - Different Warranty"
+   Use when warranty is the only material differentiator and SOP specifies warranty as variant-driving.
+
+4. "Not a Duplicate - Incorrect Variant Attribute Name Data Not Available"
+   Use when variant attribute names are incorrect and the actual variant values cannot be determined.
+
+5. "Not a Duplicate - Incorrect Variant Attribute Names"
+   Use when products differ only because variant information is stored under incorrect attribute names.
+
+6. "Not a Duplicate - Variant Attribute Data Not Available"
+   Use when variant-driving attributes are missing and variant status cannot be determined.
+
+7. "Not a Duplicate - Variant"
+   Use when products belong to the same product family but differ in one or more variant-driving attributes.
+
+8. "Duplicate"
+   Use when every critical attribute matches after applying SOP ignore rules.
+
+9. "Not a Duplicate"
+   Use only when the products belong to completely different product families and are not variants of each other.
 
 Respond with JSON only (no markdown, no backticks):
 {

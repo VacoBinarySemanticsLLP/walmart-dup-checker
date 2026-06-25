@@ -20,6 +20,8 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Only copy the app code — no secrets, no node_modules, no git
 COPY main.py .
+COPY rule_compiler.py .
+COPY rules.json .
 
 # Runtime optimizations
 ENV PYTHONDONTWRITEBYTECODE=1 \
