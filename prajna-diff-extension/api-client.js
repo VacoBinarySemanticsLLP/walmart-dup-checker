@@ -26,7 +26,7 @@ window.analyzeProductWithGemini = async function(product) {
       imageUrls: imageUrls
     };
 
-    const response = await fetch('http://localhost:8000/api/analyze-column', {
+    const response = await fetch('http://localhost:8080/api/analyze-column', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -59,7 +59,7 @@ window.analyzeProductWithGemini = async function(product) {
 window.analyzeBatchWithGemini = async function(products, forceRefresh = false) {
   console.log(`🤖 DupCheck AI: Preparing to send batch of ${products.length} products to AI...`);
   try {
-    const payloadProducts = products.map(p => {
+    const payloadProducts = products.map((p, idx) => {
       const imageUrls = [];
       if (p.imgs_main && p.imgs_main.length > 0) {
           imageUrls.push(...p.imgs_main);
@@ -84,8 +84,26 @@ window.analyzeBatchWithGemini = async function(products, forceRefresh = false) {
       // Deduplicate images exactly
       const uniqueImageUrls = Array.from(new Set(imageUrls));
 
+      let prodId = p.gtin || '';
+      if (!prodId || prodId.startsWith('GTIN#')) {
+        const pid = p.attrs['Product ID'] || p.attrs['product id'] || '';
+        if (pid) {
+          prodId = pid;
+        } else {
+          const itemId = p.attrs['Item ID'] || p.attrs['item id'] || '';
+          if (itemId) {
+            prodId = itemId;
+          } else {
+            prodId = p.gtin || p.name || 'Unknown';
+          }
+        }
+      }
+
+      let finalId = 'GTIN#' + (idx + 1);
+      if (prodId && !prodId.startsWith('GTIN#')) finalId += ' (' + prodId + ')';
+
       return {
-        id: p.gtin || p.name || 'Unknown',
+        id: finalId,
         title: p.name || '',
         description: finalDesc.trim(),
         attributes: p.attrs || {},
@@ -98,7 +116,7 @@ window.analyzeBatchWithGemini = async function(products, forceRefresh = false) {
     
     console.log(`🤖 DupCheck AI: Sending batch request to backend (Force Refresh: ${forceRefresh}):`, payload);
 
-    const response = await fetch('http://localhost:8000/api/analyze-batch', {
+    const response = await fetch('http://localhost:8080/api/analyze-batch', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: payloadStr

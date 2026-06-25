@@ -1,7 +1,3 @@
-// DupCheck Evaluator v4.1 — Brute force table reader
-// No class detection — reads ALL tables, picks the right one by content
-
-
 var _url = window.location.href.toLowerCase();
 var _isWALLE = _url.indexOf('walle')>=0 || _url.indexOf('walmart')>=0 ||
  !!document.querySelector('[class*="review-group"],[class*="group-module"],[class*="walle"]') ||
@@ -34,9 +30,9 @@ var shadow = host.attachShadow({mode:'open'});
 
 var css = document.createElement('style');
 css.textContent = `
-*{box-sizing:border-box;margin:0;padding:0;font-family:'Segoe UI',system-ui,sans-serif;}
+*{box-sizing:border-box;margin:0;padding:0;font-family:'Inter','Roboto','Segoe UI',system-ui,sans-serif;}
 #wrap{
- width:var(--panel-w,360px);height:calc(100vh - 60px);background:#f0f2ff;
+ width:var(--panel-w,440px);height:calc(100vh - 60px);background:#f0f2ff;
  border-left:1px solid #c8caff;
  box-shadow:-4px 0 20px rgba(0,0,0,.15);
  display:flex;flex-direction:column;overflow:hidden;
@@ -125,26 +121,26 @@ css.textContent = `
 .sop-lbl{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#3d3df5;margin-bottom:6px;}
 .sop-txt{font-size:11px;color:#333;line-height:1.6;font-weight:500;}
 .match-all{background:#e8faf0;border:1px solid #a9dfbf;border-radius:10px;padding:12px;margin-bottom:10px;animation:slideUp .4s .2s ease both;}
-.match-all-hdr{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#1a7f4b;margin-bottom:8px;}
+.match-all-hdr{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#1a7f4b;margin-bottom:8px;}
 .match-row{display:flex;padding:4px 0;border-bottom:1px solid rgba(0,0,0,.05);}
 .match-row:last-child{border-bottom:none;}
-.match-field{font-size:11px;font-weight:600;color:#444;flex:0 0 130px;}
-.match-val{font-size:11px;font-weight:700;color:#1a7f4b;word-break:break-word;}
+.match-field{font-size:13px;font-weight:600;color:#444;flex:0 0 130px;}
+.match-val{font-size:13px;font-weight:700;color:#1a7f4b;word-break:break-word;}
 .diff-table{background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 1px 6px rgba(0,0,0,.07);margin-bottom:10px;animation:slideUp .4s .25s ease both;}
-.diff-hdr{display:flex;background:#fdecea;border-bottom:1px solid #f5b7b7;padding:7px 12px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:#c0392b;align-items:center;justify-content:space-between;}
-.diff-badge{background:#c0392b;color:#fff;font-size:8px;padding:2px 7px;border-radius:10px;font-weight:700;}
+.diff-hdr{display:flex;background:#fdecea;border-bottom:1px solid #f5b7b7;padding:7px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:#c0392b;align-items:center;justify-content:space-between;}
+.diff-badge{background:#c0392b;color:#fff;font-size:10px;padding:2px 7px;border-radius:10px;font-weight:700;}
 .diff-col-hdr{display:flex;background:#fafafa;border-bottom:1px solid #f0f0f0;}
-.diff-col-hdr div{flex:1;padding:4px 10px;font-size:8px;font-weight:700;text-transform:uppercase;color:#aaa;border-right:1px solid #f0f0f0;}
+.diff-col-hdr div{flex:1;padding:6px 10px;font-size:10px;font-weight:700;text-transform:uppercase;color:#888;border-right:1px solid #f0f0f0;}
 .diff-col-hdr div:last-child{border-right:none;}
 .drow{border-bottom:1px solid #f8f8f8;background:#fff;}
 .drow:last-child{border-bottom:none;}
-.dlbl{padding:4px 10px 2px;font-size:9px;font-weight:700;color:#777;text-transform:uppercase;background:#fafafa;border-bottom:1px solid #f5f5f5;}
+.dlbl{padding:6px 10px 2px;font-size:12px;font-weight:700;color:#777;background:#fafafa;border-bottom:1px solid #f5f5f5;}
 .dvals{display:flex;}
-.dval{flex:1;padding:5px 10px 6px;font-size:11px;font-weight:600;line-height:1.4;word-break:break-word;border-right:1px solid #f5f5f5;min-height:28px;}
+.dval{flex:1;padding:6px 10px 8px;font-size:13px;font-weight:600;line-height:1.4;word-break:break-word;border-right:1px solid #f5f5f5;min-height:28px;}
 .dval:last-child{border-right:none;}
 .dval.red{background:#fff5f5;color:#c0392b;}
 .dval.grn{background:#f0fff4;color:#1a7f4b;}
-.dval.muted{color:#ccc;font-style:italic;font-weight:400;}
+.dval.muted{color:#9ca3af;font-weight:500;}
 .err{background:#fff;border-radius:10px;padding:16px;color:#c0392b;font-size:11px;line-height:1.7;box-shadow:0 1px 6px rgba(0,0,0,.07);}
 .dbg{background:#fff;border-radius:10px;padding:12px;margin-top:8px;font-size:9px;color:#888;line-height:1.8;word-break:break-all;box-shadow:0 1px 4px rgba(0,0,0,.05);}
 #foot{padding:6px 12px;border-top:1px solid #dddeff;background:#eef0ff;flex-shrink:0;display:flex;justify-content:space-between;align-items:center;}
@@ -162,9 +158,8 @@ wrap.innerHTML =
      '<div class="logo-box">⚡</div>'+
      '<div style="flex:1"><div class="hdr-title">DupCheck</div><div class="hdr-sub">Duplicate Detection Evaluator</div></div>'+
      '<div class="hdr-btns">'+
-       '<button class="hdr-btn" id="mbtn" title="Toggle panel (M)">M</button>'+
+       '<button class="hdr-btn" id="translatebtn" title="Translate to English" style="font-size:12px; font-weight:bold;">EN</button>'+
        '<button class="hdr-btn" id="minbtn" title="Minimize">—</button>'+
-       '<button class="hdr-btn" id="closebtn" title="Close">✕</button>'+
      '</div>'+
    '</div>'+
    '<button class="analyze-btn" id="analyzebtn">🔍  Analyze This Page</button>'+
@@ -194,7 +189,7 @@ var PILL_BASE = [
  'border-radius:28px','padding:8px 14px 8px 10px',
  'box-shadow:0 4px 20px rgba(61,61,245,.5)',
  'cursor:pointer',
- 'font-family:Segoe UI,system-ui,sans-serif',
+ 'font-family:"Inter","Roboto","Segoe UI",system-ui,sans-serif',
  'font-size:12px','font-weight:700','color:#fff',
  'border:none','outline:none',
  'user-select:none','-webkit-user-select:none',
@@ -223,6 +218,57 @@ var _minimized   = false;
 var _diffCount   = 0;
 var _panelWidth  = 360; // auto-adjusted based on GTIN count
 var _analyzed    = false; // declared here so keyboard shortcut can use it
+
+var _translateEnabled = false;
+var _originalBodyHTML = '';
+
+async function toggleTranslate() {
+  _translateEnabled = !_translateEnabled;
+  var btn = shadow.getElementById('translatebtn');
+  btn.style.background = _translateEnabled ? '#2ecc71' : 'rgba(255,255,255,.15)';
+  
+  if (_translateEnabled) {
+    _originalBodyHTML = wrap.innerHTML;
+    var scanCard = document.createElement('div');
+    scanCard.className = 'scan-card';
+    scanCard.style.marginTop = '10px';
+    scanCard.innerHTML = '<div class="scan-txt">Translating to English...</div>';
+    shadow.getElementById('body').appendChild(scanCard);
+    
+    // Walk over the ENTIRE wrap so headers and footers are translated too
+    var walk = document.createTreeWalker(wrap, NodeFilter.SHOW_TEXT, null, false);
+    var nodes = [];
+    var n;
+    while(n = walk.nextNode()) {
+      var t = n.nodeValue;
+      if (t.trim().length > 0 && !/^[\d\s\.,;:!@#\$%\^&\*\(\)\-_\+=\[\]\{\}\|\\<>\?\/]+$/.test(t) && t.indexOf('EN') === -1) {
+        nodes.push({node: n, text: t});
+      }
+    }
+    
+    for(var i=0; i<nodes.length; i++) {
+      try {
+        var url = 'https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=en&dt=t&q=' + encodeURIComponent(nodes[i].text);
+        var res = await fetch(url);
+        var data = await res.json();
+        if(data && data[0]) {
+           nodes[i].node.nodeValue = data[0].map(function(item){return item[0];}).join('');
+        }
+      } catch(e) {}
+    }
+    if (scanCard.parentNode) scanCard.parentNode.removeChild(scanCard);
+  } else {
+    if (_originalBodyHTML) {
+      wrap.innerHTML = _originalBodyHTML;
+      // Re-bind the click handlers since wrap.innerHTML destroyed them
+      shadow.getElementById('minbtn').onclick    = minimizePanel;
+      shadow.getElementById('translatebtn').onclick = toggleTranslate;
+      shadow.getElementById('rerun').onclick     = function(){ runAnalysis(true); };
+      shadow.getElementById('analyzebtn').onclick= function(){ runAnalysis(false); };
+      shadow.getElementById('translatebtn').style.background = 'rgba(255,255,255,.15)';
+    }
+  }
+}
 
 
 function openPanel(){
@@ -253,9 +299,8 @@ function minimizePanel(){
 
 
 pill.addEventListener('click', openPanel);
-shadow.getElementById('closebtn').onclick  = minimizePanel;
 shadow.getElementById('minbtn').onclick    = minimizePanel;
-shadow.getElementById('mbtn').onclick      = function(){ _minimized ? openPanel() : minimizePanel(); };
+shadow.getElementById('translatebtn').onclick = toggleTranslate;
 shadow.getElementById('rerun').onclick     = function(){ runAnalysis(true); };
 shadow.getElementById('analyzebtn').onclick= function(){ runAnalysis(false); };
 window.__prajnaShow = function(){ openPanel(); runAnalysis(false); };
@@ -308,8 +353,7 @@ var SKIP_LABELS = [
  'defects','content audit report','image validation','item tracker','copy creation',
  'file status','report an issue','provide feedback','request access','show null data',
  'viewing','select cluster','select grouping','hs-v',
- 'variant group id','variant attribute names','product net content parent',
- 'product net content','flotation tire','electric vehicle tire','is run flat',
+ 'variant group id','variant attribute names','flotation tire','electric vehicle tire','is run flat',
  'abstract product id','manufacturer part number','is prop 65','is resizable',
  'personal relationship','inscription','small parts warning code'
  // NOTE: 'has written warranty' REMOVED — warranty IS relevant per agent feedback
@@ -916,6 +960,56 @@ if(hasGTINs()){
 }
 
 
+// SPA URL change detector
+var _lastUrl = window.location.href;
+var _lastGTINsScraped = ""; // Track the last extracted items to prevent stale data runs
+
+setInterval(function() {
+  if (window.location.href !== _lastUrl) {
+    _lastUrl = window.location.href;
+    
+    // Only auto-run if we are actually on the review-group comparison page
+    if (_lastUrl.toLowerCase().indexOf('review-group') === -1) {
+       minimizePanel();
+       if(pill) pill.style.setProperty('display','none','important');
+       _analyzed = false;
+       return;
+    }
+    
+    // Valid review page: ensure panel/pill is active
+    if(pill) pill.style.setProperty('display','flex','important');
+    openPanel();
+    console.log("🤖 DupCheck AI: URL changed to a valid review page, resetting analysis state.");
+    
+    // Immediately lock analysis and clear old trackers
+    _analyzed = true; 
+    if(_obs) _obs.disconnect();
+    clearInterval(_timer);
+    
+    // Reset UI to waiting state instantly so it doesn't show old page data
+    showBody('<div class="scan-card" style="margin-top:20px;"><div class="scan-bars"><div class="scan-bar"></div><div class="scan-bar"></div><div class="scan-bar"></div><div class="scan-bar"></div><div class="scan-bar"></div></div><div class="scan-txt">Waiting for WALLE…</div><div class="scan-sub">Fetching new product data</div></div>');
+    
+    // Wait until React replaces the old table with the new one
+    var attempts = 0;
+    var waitTimer = setInterval(function() {
+       attempts++;
+       if(!hasGTINs() && attempts < 50) return; // wait for DOM to exist
+       
+       var newProds = [];
+       try { newProds = extractProducts(); } catch(e){}
+       var currentGTINsStr = newProds.map(function(p){ return p.gtin || p.name; }).join(",");
+       
+       // Trigger only if the GTINs changed, or if it timed out (failsafe after 3s)
+       if (currentGTINsStr !== _lastGTINsScraped || attempts > 20) {
+           clearInterval(waitTimer);
+           _lastGTINsScraped = currentGTINsStr; // Update tracked string
+           _analyzed = false; // Unlock
+           triggerAnalysis();
+       }
+    }, 150);
+  }
+}, 500);
+
 // ═══ CATEGORY + VERDICT ════════════════════════════════════════
 var MANDATORY={
  books:['edition','format','isbn'],clothing:['size','color','colour','pattern'],
@@ -1080,7 +1174,25 @@ function buildWarnings(keyDiffs,otherDiffs,mainSame,secSame,p1,p2,vert1,vert2){
 
 
 // ═══ ANALYSIS ══════════════════════════════════════════════════
-function showBody(html){ shadow.getElementById('body').innerHTML=html; }
+function getGTINLabel(p, i) {
+  var id = '';
+  if (p.gtin && p.gtin.indexOf('GTIN#') !== 0) id = p.gtin;
+  else if (p.attrs && p.attrs['Product ID']) id = p.attrs['Product ID'];
+  else if (p.attrs && p.attrs['product id']) id = p.attrs['product id'];
+  else if (p.attrs && p.attrs['Item ID']) id = p.attrs['Item ID'];
+  else if (p.attrs && p.attrs['item id']) id = p.attrs['item id'];
+  return 'GTIN#' + (i+1) + (id ? ' (' + id + ')' : '');
+}
+
+function showBody(html){ 
+  shadow.getElementById('body').innerHTML=html; 
+  if (_translateEnabled) {
+    _translateEnabled = false;
+    if(shadow.getElementById('translatebtn')) {
+        shadow.getElementById('translatebtn').style.background = 'rgba(255,255,255,.15)';
+    }
+  }
+}
 function setScanning(){
  showBody('<div class="scan-card"><div class="scan-bars"><div class="scan-bar"></div><div class="scan-bar"></div><div class="scan-bar"></div><div class="scan-bar"></div><div class="scan-bar"></div></div><div class="scan-txt">Analyzing…</div><div class="scan-sub">Reading comparison table</div></div>');
 }
@@ -1092,6 +1204,7 @@ function runAnalysis(manual){
    try{
      var products=extractProducts();
      if(!products||products.length<2) return;
+     _lastGTINsScraped = products.map(function(p){ return p.gtin || p.name; }).join(",");
 
 
      // UPDATE UI to show AI vision is running
@@ -1133,75 +1246,135 @@ function runAnalysis(manual){
      html += '</div>';
 
 
-     // 1.5 Image Specs Extracted
+     // 2. Verdict / AI Result AT THE TOP
+     if (apiResult.horizontal_clustering && apiResult.horizontal_clustering.length > 0) {
+         var primaryAction = "Duplicate";
+         var primaryReason = "No bad data or clustering differences found by AI.";
+         var isDup = (clusterCount === 1 && badDataCount === 0);
+         
+         // If there's bad data, the action is likely Bad Data
+         if (badDataCount > 0) {
+             primaryAction = "Not Sure - Bad Data";
+             primaryReason = "AI detected vertical contradictions between image and text attributes.";
+             isDup = false;
+         } else if (clusterCount > 1) {
+             // Find the first cluster that specifies a non-duplicate action
+             for(var i=0; i<apiResult.horizontal_clustering.length; i++) {
+                 var c = apiResult.horizontal_clustering[i];
+                 if (c.recommended_action && c.recommended_action !== "Duplicate") {
+                     primaryAction = c.recommended_action;
+                     primaryReason = c.reason || "AI separated these products into different clusters.";
+                     break;
+                 }
+             }
+             isDup = false;
+         } else {
+             // 1 cluster, 0 bad data
+             var c0 = apiResult.horizontal_clustering[0];
+             if (c0.recommended_action) primaryAction = c0.recommended_action;
+             if (c0.reason) primaryReason = c0.reason;
+         }
+         
+         // Always show the cluster breakdown now that the single verdict card is removed
+         html += '<div class="diff-table" style="animation:slideUp .4s .08s ease both; margin-bottom:12px;">';
+         html += '<div class="diff-hdr" style="background:#eef2ff;border-color:#c7d2fe;color:#4f46e5; font-size:14px;">'+
+            '🤖 AI Clusters <span class="diff-badge" style="background:#4f46e5">'+clusterCount+'</span>'+
+          '</div>';
+         
+          apiResult.horizontal_clustering.forEach(function(c) {
+             var actionText = c.recommended_action || c.cluster_name;
+             var isBadData = actionText.indexOf('Bad Data') >= 0;
+             var badgeColor = isBadData ? '#dc2626' : '#4f46e5';
+             var badgeBg = isBadData ? '#fef2f2' : '#eef2ff';
+             var borderColor = isBadData ? '#fca5a5' : '#c7d2fe';
+             
+             html += '<div style="padding:12px; border-bottom:1px solid #f3f4f6; background:#fff;">' +
+                 '<div style="display:flex; align-items:center; margin-bottom:8px;">' +
+                 '<span style="background:'+badgeBg+'; color:'+badgeColor+'; padding:4px 8px; border-radius:4px; font-size:12px; font-weight:700; border:1px solid '+borderColor+';">' + esc(actionText) + '</span>' +
+                 '</div>' +
+                 '<div style="font-size:13px; color:#1f2937; margin-bottom:6px;"><b>Products:</b> ' + esc(c.product_ids.join(', ')) + '</div>' +
+                 '<div style="font-size:13px; color:#4b5563; line-height:1.5;">' + esc(c.reason) + '</div>' +
+                 '</div>';
+          });
+          html += '</div>';
+     }
+
+     // 1.5 Image vs Text Extraction Table
      html += '<div class="diff-table" style="animation:slideUp .4s .06s ease both; margin-top: 12px;">';
-     html += '<div class="diff-hdr" style="background:#eef2ff;border-color:#c7d2fe;color:#4f46e5">'+
-        '🖼️ Image Specifications Extracted by AI'+
+     html += '<div class="diff-hdr" style="background:#eef2ff;border-color:#c7d2fe;color:#4f46e5; font-size:14px;">'+
+        '🖼️ Image vs Text Verification'+
       '</div>';
      (apiResult.vertical_checks || []).forEach(function(v) {
-         var specs = v.extracted_image_specs || 'None';
-         var specColor = (specs.toLowerCase() === 'none') ? '#9ca3af' : '#4f46e5';
-         html += '<div class="drow" style="flex-direction:column; align-items:stretch;">' +
-            '<div class="dlbl" style="color:#374151;">' + esc(v.product_id) + '</div>' +
-            '<div style="padding:4px 10px 8px; font-size:12px; font-weight:500; color:' + specColor + ';">' + esc(specs) + '</div>' +
-            '</div>';
+         html += '<div class="drow" style="flex-direction:column; align-items:stretch; padding-bottom: 0;">' +
+            '<div class="dlbl" style="color:#374151; font-size:14px; font-weight:700; margin-bottom:6px;">' + esc(v.product_id) + '</div>';
+            
+         // Find matching product object to get its raw attributes using getGTINLabel to match what the backend returns
+         var prod = products.find(function(p, idx){ return getGTINLabel(p, idx) === v.product_id; }) || {attrs:{}};
+         var prodAttrs = prod.attrs || {};
+         var mismatches = v.mismatch_details || [];
+         
+         // Check if perfect match (no mismatches and no bad data)
+         var isPerfect = (mismatches.length === 0 && !v.has_bad_data);
+
+         if (isPerfect) {
+             html += '<div style="margin-bottom:10px; padding:8px 12px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px; font-size:13px; color:#166534; display:flex; align-items:center;">';
+             html += '<span style="font-size:16px; margin-right:8px;">✅</span>';
+             html += '<div><b>Visuals match text.</b> ' + (v.extracted_image_summary ? '<span style="opacity:0.85">(' + esc(v.extracted_image_summary) + ')</span>' : '') + '</div>';
+             html += '</div>';
+         } else {
+             // Show the ultra-brief summary from AI so user knows what it saw
+             if (v.extracted_image_summary) {
+                html += '<div style="margin-bottom:10px; padding:10px; background:#f8fafc; border:1px solid #e2e8f0; border-left:3px solid #94a3b8; border-radius:4px; font-size:13px; color:#334155;">' + 
+                        '<b>👁️ AI Vision Specs:</b> ' + esc(v.extracted_image_summary) + '</div>';
+             }
+             
+             // If there is bad data, show the AI's reasoning
+             if (v.has_bad_data && v.reason) {
+                 html += '<div style="background:#fef2f2; border-left:3px solid #dc2626; padding:10px; margin-bottom:10px; font-size:13px; color:#991b1b; border-radius:0 4px 4px 0;">' +
+                         '<b>Bad Data Detected:</b> ' + esc(v.reason) + '</div>';
+             }
+
+             if (mismatches.length > 0) {
+                 html += '<table style="width:100%; border-collapse:collapse; font-size:14px; margin-bottom:10px; text-align:left;">';
+                 html += '<tr style="border-bottom:1px solid #e5e7eb; color:#6b7280;">' +
+                         '<th style="padding:8px; font-weight:600; width:25%;">Attribute</th>' +
+                         '<th style="padding:8px; font-weight:600; width:45%;">Product Description</th>' +
+                         '<th style="padding:8px; font-weight:600; width:30%;">Image Verification</th>' +
+                         '</tr>';
+                         
+                 // Build the table using the frontend data!
+                 var attrKeys = Object.keys(prodAttrs);
+                 if (attrKeys.length === 0) {
+                     html += '<tr><td colspan="3" style="padding:16px 10px; text-align:center; color:#6b7280; font-weight:500; background:#f9fafb;">No text attributes found on page</td></tr>';
+                 } else {
+                     attrKeys.forEach(function(attrKey) {
+                         var textVal = prodAttrs[attrKey];
+                         
+                         // Check if AI flagged this specific attribute
+                         var mismatch = mismatches.find(function(m){ return m.field && m.field.toLowerCase() === attrKey.toLowerCase(); });
+                         
+                         // ONLY render the row if it's a mismatch!
+                         if (mismatch) {
+                             var statColor = '#dc2626';
+                             var statIcon = '❌ ';
+                             var bg = '#fef2f2';
+                             var imageVal = mismatch.imageValue;
+                             
+                             html += '<tr style="border-bottom:1px solid #f3f4f6; background:'+bg+';">' +
+                                     '<td style="padding:10px 8px; font-weight:600; color:#374151;">' + esc(attrKey) + '</td>' +
+                                     '<td style="padding:10px 8px; color:#4b5563;">' + esc(textVal) + '</td>' +
+                                     '<td style="padding:10px 8px; font-weight:700; color:'+statColor+';">' + statIcon + esc(imageVal) + '</td>' +
+                                     '</tr>';
+                         }
+                     });
+                 }
+                 html += '</table>';
+             }
+         }
+         html += '</div>';
      });
      html += '</div>';
 
-
-     // 2. Verdict / AI Result AT THE TOP
-     if (apiResult.horizontal_clustering && apiResult.horizontal_clustering.length > 0) {
-         if (clusterCount === 1 && badDataCount === 0) {
-             html += '<div class="verdict-card dup" style="animation:slideUp .4s .08s ease both;"><div class="v-icon">✓</div><div class="v-txt">All ' + n + ' GTINs are identical</div><div class="v-reason">No bad data or clustering differences found by AI.</div></div>';
-         } else {
-            if (clusterCount > 1) {
-                html += '<div class="verdict-card nd" style="animation:slideUp .4s .08s ease both;"><div class="v-icon">❌</div><div class="v-txt">NOT A DUPLICATE</div><div class="v-reason">AI separated these products into ' + clusterCount + ' different clusters.</div></div>';
-            }
-            html += '<div class="diff-table" style="animation:slideUp .4s .08s ease both">';
-            html += '<div class="diff-hdr" style="background:#f0f4ff;border-color:#c5c8ff;color:#3d3df5">'+
-               '🤖 Phase 2: AI Duplicate Clusters <span class="diff-badge" style="background:#3d3df5">'+clusterCount+'</span>'+
-             '</div>';
-            
-             apiResult.horizontal_clustering.forEach(function(c) {
-                html += '<div class="drow" style="flex-direction:column; align-items:stretch;">' +
-                    '<div class="dlbl" style="color:#3d3df5;">' + esc(c.cluster_name) + '</div>' +
-                    '<div style="padding:6px 10px 2px; font-size:11px; color:#333;"><b>Products:</b> ' + esc(c.product_ids.join(', ')) + '</div>' +
-                    '<div style="padding:4px 10px 8px; font-size:11px; font-style:italic; color:#666;">' + esc(c.reason) + '</div>' +
-                    '</div>';
-             });
-             html += '</div>';
-         }
-     }
-
-
-     // 3. Phase 1 (Bad Data)
-     var badData = apiResult.vertical_checks ? apiResult.vertical_checks.filter(function(v){ return v.has_bad_data; }) : [];
-     if (badData.length > 0) {
-       html+='<div class="diff-table" style="animation:slideUp .4s .1s ease both">'+
-         '<div class="diff-hdr" style="background:#fdecea;border-color:#f5b7b7;color:#c0392b">'+
-           '🔴 Phase 1: Bad Data Detected <span class="diff-badge" style="background:#c0392b">'+badData.length+'</span>'+
-         '</div>';
-       badData.forEach(function(v){
-           if (v.mismatch_details && v.mismatch_details.length > 0) {
-             v.mismatch_details.forEach(function(m) {
-                html += '<div class="drow" style="flex-direction:column; align-items:stretch;">'+
-                        '<div class="dlbl" style="color:#92400e; width:100%;">' + esc(v.product_id) + ' · ' + esc(m.field) + '</div>'+
-                        '<div class="dvals">'+
-                          '<div class="dval red"><b>Image:</b> ' + esc(m.imageValue) + '</div>'+
-                          '<div class="dval red"><b>Attr:</b> ' + esc(m.textValue) + '</div>'+
-                        '</div>'+
-                        '<div style="padding:4px 10px 8px; font-size:10px; font-style:italic; color:#666;">'+esc(v.reason)+'</div>'+
-                        '</div>';
-             });
-           } else {
-                html += '<div class="drow" style="flex-direction:column; align-items:stretch;">'+
-                        '<div class="dlbl" style="color:#92400e; width:100%;">' + esc(v.product_id) + '</div>'+
-                        '<div style="padding:8px 10px; font-size:11px; color:#c0392b;">'+esc(v.reason)+'</div>'+
-                        '</div>';
-           }
-       });
-       html+='</div>';
-     }
 
 
      // 4. Attribute Table
@@ -1232,7 +1405,7 @@ function runAnalysis(manual){
          html += '<div class="diff-table" style="animation:slideUp .4s .15s ease both;">';
          html += '<div class="diff-hdr" style="background:#fdecea;color:#c0392b;border-bottom:1px solid #f5b7b7;">⚠ DIFFERING ATTRIBUTES</div>';
          html += '<div class="diff-col-hdr"><div>Attribute</div>';
-         for(var i=0;i<n;i++) html += '<div>GTIN#'+(i+1)+'</div>';
+         for(var i=0;i<n;i++) html += '<div>'+esc(getGTINLabel(products[i], i))+'</div>';
          html += '</div>';
          diffAttrs.forEach(function(attr) {
              html += '<div class="drow"><div class="dvals"><div class="dval" style="color:#c0392b;font-weight:700;">'+esc(attr.key)+'</div>';
@@ -1243,51 +1416,7 @@ function runAnalysis(manual){
      }
 
 
-     // 5. Extracted Images
-     html += '<div class="img-section" style="animation:slideUp .4s .2s ease both;"><div class="img-sec-hdr">Extracted Images</div><div class="multi-scroll"><div style="display:flex;gap:1px;background:#f0f0f0;">';
-     products.forEach(function(p, i){
-        html += '<div class="img-cell"><div class="img-lbl">GTIN#'+(i+1)+'</div><div style="display:flex; flex-wrap:wrap; gap:4px; justify-content:center;">';
-        var allImgs = [];
-        if (p.imgs_main) allImgs.push.apply(allImgs, p.imgs_main);
-        else if (p.img1) allImgs.push(p.img1);
-        if (p.imgs_sec) allImgs.push.apply(allImgs, p.imgs_sec);
-        else if (p.img2) allImgs.push(p.img2);
-        if (p.imageUrls && allImgs.length === 0) allImgs.push.apply(allImgs, p.imageUrls);
-
-
-        allImgs = allImgs.filter(function(item, pos) { return allImgs.indexOf(item) === pos; });
-        if(allImgs.length > 0) {
-            allImgs.forEach(function(src) {
-                html += '<img src="'+esc(src)+'" onerror="this.style.display=\'none\'" style="width:40px; height:40px; object-fit:contain; border-radius:4px; border:1px solid #ddd;">';
-            });
-        } else {
-            html += '<div style="font-size:8px;color:#aaa;padding:20px 0;">NO IMAGES</div>';
-        }
-        html += '</div></div>';
-     });
-     html += '</div></div></div>';
-
-
-     // 6. Descriptions
-     var allDescsSame = products.every(function(p) { return p.description === products[0].description; });
-     if(allDescsSame) {
-         html += '<div class="match-all" style="animation:slideUp .4s .25s ease both;">';
-         html += '<div class="match-all-hdr">✓ MATCHING DESCRIPTION</div>';
-         html += '<div style="font-size:10px; color:#444; max-height:100px; overflow-y:auto; line-height:1.4;">' + (esc(products[0].description) || '<i style="color:#ccc">Empty</i>') + '</div>';
-         html += '</div>';
-     } else {
-         html += '<div class="diff-table" style="animation:slideUp .4s .25s ease both;">';
-         html += '<div class="diff-hdr" style="background:#fdecea;color:#c0392b;border-bottom:1px solid #f5b7b7;">⚠ DIFFERING DESCRIPTIONS</div>';
-         html += '<div class="diff-col-hdr">';
-         for(var i=0;i<n;i++) html += '<div>GTIN#'+(i+1)+'</div>';
-         html += '</div>';
-         html += '<div class="drow"><div class="dvals">';
-         products.forEach(function(p, i) {
-             html += '<div class="dval" style="font-size:10px; max-height:100px; overflow-y:auto; border-right:1px solid #eee; padding:6px; font-weight:normal;">' + (esc(p.description) || '<i style="color:#ccc">Empty</i>') + '</div>';
-         });
-         html += '</div></div></div>';
-     }
-    
+     // Extracted Images and Descriptions removed per user request
      showBody(html);
 
 

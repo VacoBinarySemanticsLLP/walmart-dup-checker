@@ -2,18 +2,164 @@ import os
 import json
 import base64
 import asyncio
-import tempfile
 import httpx
 import hashlib
 import io
+import atexit
+import datetime
 from PIL import Image
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from dotenv import load_dotenv
 
-CACHE_FILE = "ai_analysis_cache.json"
+from rule_compiler import compile_rules, get_compiled_rules_stats
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  CONFIGURATION
+# ─────────────────────────────────────────────────────────────────────────────
+CACHE_FILE = "ai_analysis_cache.json"
+GEMINI_MODEL = "gemini-2.5-flash"
+CACHE_TTL_HOURS = 4  # How long the context cache stays alive
+
+load_dotenv()
+
+api_key = os.getenv("GEMINI_API_KEY")
+if not api_key:
+    print("WARNING: GEMINI_API_KEY not found in .env file")
+
+# Initialize the new google-genai client
+client = genai.Client(api_key=api_key)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  CONTEXT CACHE MANAGEMENT
+# ─────────────────────────────────────────────────────────────────────────────
+_cached_content = None  # Module-level reference to the active cache
+
+
+def create_rule_cache():
+    """
+    Compile rules.json into compact text and create a Gemini context cache.
+    This is called ONCE at server startup. The cache persists for CACHE_TTL_HOURS.
+    """
+    global _cached_content
+
+    print("\n" + "=" * 60)
+    print("📦 COMPILING RULES & CREATING CONTEXT CACHE...")
+    print("=" * 60)
+
+    # Step 1: Compile rules into compact text
+    compiled_rules = compile_rules()
+    stats = get_compiled_rules_stats(compiled_rules)
+
+    print(f"  ✅ Compiled rules: {stats['char_count']:,} chars, ~{stats['approx_tokens']:,} tokens")
+    print(f"  ✅ Meets 32K minimum: {stats['meets_32k_minimum']}")
+    print(f"  💰 Est. cache cost: ${stats['estimated_cache_cost_per_hour']}/hour")
+
+    # Step 2: Create the context cache with Gemini
+    try:
+        _cached_content = client.caches.create(
+            model=GEMINI_MODEL,
+            config=types.CreateCachedContentConfig(
+                contents=[
+                    types.Content(
+                        role="user",
+                        parts=[types.Part.from_text(text=compiled_rules)]
+                    )
+                ],
+                system_instruction=types.Content(
+                    parts=[types.Part.from_text(
+                        text=(
+                            "You are a Walmart product data quality evaluator. "
+                            "The SOP rules provided in the cached context are your ONLY source of truth. "
+                            "When comparing products, find the matching rule by category/product type, "
+                            "check which scenario's conditions apply, and return that scenario's decision. "
+                            "Always respond with valid JSON only — no markdown, no backticks."
+                        )
+                    )]
+                ),
+                ttl=f"{CACHE_TTL_HOURS * 3600}s",
+                display_name="walmart-sop-rules"
+            )
+        )
+
+        print(f"  ✅ Cache created: {_cached_content.name}")
+        print(f"  ⏰ TTL: {CACHE_TTL_HOURS} hours (expires ~{datetime.datetime.now() + datetime.timedelta(hours=CACHE_TTL_HOURS):%H:%M})")
+        print("=" * 60 + "\n")
+
+    except Exception as e:
+        print(f"  ❌ Cache creation FAILED: {e}")
+        print("  ⚠️  Falling back to non-cached mode (rules sent per request)")
+        print("=" * 60 + "\n")
+        _cached_content = None
+
+
+def delete_rule_cache():
+    """Delete the context cache on shutdown to stop billing."""
+    global _cached_content
+    if _cached_content:
+        try:
+            client.caches.delete(name=_cached_content.name)
+            print(f"🗑️  Context cache deleted: {_cached_content.name}")
+        except Exception as e:
+            print(f"⚠️  Failed to delete cache (may have expired): {e}")
+        _cached_content = None
+
+
+def get_model():
+    """
+    Return a model reference — cached if available, fallback otherwise.
+    When using the cached model, rules are NOT sent per request.
+    """
+    if _cached_content:
+        return _cached_content.name
+    return None
+
+
+def generate_with_cache(contents: list) -> str:
+    """
+    Generate content using the cached context if available.
+    Falls back to sending rules inline if cache is not available.
+    """
+    cache_name = get_model()
+
+    if cache_name:
+        # Cached mode — rules are already in the cache, just send product data
+        response = client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=contents,
+            config=types.GenerateContentConfig(
+                cached_content=cache_name
+            )
+        )
+    else:
+        # Fallback — send compiled rules inline (more expensive)
+        compiled_rules = compile_rules()
+        full_contents = [compiled_rules] + contents
+        response = client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=full_contents
+        )
+
+    # Log cache usage stats
+    if hasattr(response, 'usage_metadata') and response.usage_metadata:
+        um = response.usage_metadata
+        cached_tokens = getattr(um, 'cached_content_token_count', 0) or 0
+        total_input = getattr(um, 'prompt_token_count', 0) or 0
+        output_tokens = getattr(um, 'candidates_token_count', 0) or 0
+        print(f"  📊 Tokens — Input: {total_input} (cached: {cached_tokens}) | Output: {output_tokens}")
+        if cached_tokens > 0:
+            savings_pct = (cached_tokens / total_input * 100) if total_input > 0 else 0
+            print(f"  💰 Cache hit: {savings_pct:.1f}% of input tokens served from cache")
+
+    return response.text
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  LOCAL RESPONSE CACHE  (unchanged from original)
+# ─────────────────────────────────────────────────────────────────────────────
 def get_cache():
     if os.path.exists(CACHE_FILE):
         try:
@@ -42,24 +188,11 @@ def get_cache_key(products):
     payload_str = json.dumps(normalized_products, sort_keys=True)
     return hashlib.md5(payload_str.encode('utf-8')).hexdigest()
 
-load_dotenv()
 
-api_key = os.getenv("GEMINI_API_KEY")
-if api_key:
-    genai.configure(api_key=api_key)
-else:
-    print("WARNING: GEMINI_API_KEY not found in .env file")
-
-app = Flask(__name__)
-# Restrict CORS to known origins — extension runs from Chrome on localhost
-CORS(app, origins=[
-    'http://localhost:8000',
-    'http://localhost:8080',
-    'chrome-extension://',
-    'https://dupcheck.duckdns.org'
-])
-
-async def fetch_image(client: httpx.AsyncClient, url: str) -> dict:
+# ─────────────────────────────────────────────────────────────────────────────
+#  IMAGE FETCHING  (unchanged from original)
+# ─────────────────────────────────────────────────────────────────────────────
+async def fetch_image(client_http: httpx.AsyncClient, url: str) -> dict:
     try:
         avif_headers = {"Accept": "image/avif,image/webp,image/jpeg,*/*"}
         raw_bytes = None
@@ -73,7 +206,7 @@ async def fetch_image(client: httpx.AsyncClient, url: str) -> dict:
 
         if avif_url != url:
             try:
-                avif_response = await client.get(avif_url, timeout=10.0, headers=avif_headers)
+                avif_response = await client_http.get(avif_url, timeout=10.0, headers=avif_headers)
                 if avif_response.status_code == 200:
                     raw_bytes = avif_response.content
                     source_format = "AVIF"
@@ -83,7 +216,7 @@ async def fetch_image(client: httpx.AsyncClient, url: str) -> dict:
                 print(f"⚠️  AVIF fetch failed ({avif_err}), falling back to JPEG")
 
         if raw_bytes is None:
-            response = await client.get(url, timeout=10.0)
+            response = await client_http.get(url, timeout=10.0)
             response.raise_for_status()
             raw_bytes = response.content
             source_format = "JPEG"
@@ -115,253 +248,127 @@ async def fetch_image(client: httpx.AsyncClient, url: str) -> dict:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  SINGLE PRODUCT ANALYSIS PROMPT  (column-level / single GTIN check)
+#  PROMPTS  (streamlined — rules are in the cache, prompts only define TASK)
 # ─────────────────────────────────────────────────────────────────────────────
+
 SINGLE_ANALYSIS_PROMPT_TEMPLATE = """
-You are a strict product data-quality checker.
-I am providing you with a product's text attributes, title, and images.
+TASK: Analyze this single product for internal data consistency (vertical check).
 
 Product Title: {title}
 Text Attributes: {attributes}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-STEP 0 — DETECT PRODUCT CATEGORY
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-First, infer the product category from the title and attributes (e.g., clothing, footwear, furniture,
-rug/carpet, electronics, paint/coatings, food/beverage, bedding, pet supplies, tools, etc.).
-This determines which attributes are "primary" (must be checked) and which are noise.
+INSTRUCTIONS:
+1. Detect the product category from title + attributes
+2. Find matching SOP rules from the cached rules for this category
+3. Extract specs from the provided images (OCR) — focus on primary attributes for the category
+4. Compare extracted image specs against the text attributes
+5. Flag contradictions ONLY (not missing data)
 
-PRIMARY ATTRIBUTES BY CATEGORY (non-exhaustive guide):
-  • Clothing / footwear  → size, color, gender, material, style name/number
-  • Rugs / carpets       → size (dimensions), pile height, color, material, style
-  • Furniture (bed/sofa/chair) → dimensions, color, material, style/model
-  • Electronics / remotes     → model number, compatibility, voltage, capacity
-  • Paint / coatings     → finish (matte/satin/gloss/semi-gloss/flat), color name + code, volume
-  • Food / beverages     → flavor, count/pack size, weight/volume, dietary claims relevant to identity
-  • Pet supplies (food)  → animal type, flavor, life-stage, weight
-  • Bedding              → size (Twin/Full/Queen/King), material, thread count, color/pattern
-  • Tools / hardware     → model number, size/dimensions, material, voltage/wattage
-  • All other / General  → size/dimensions/measurements, count/pack size, model number, style name, capacity/volume
+Use the SOP rules from the cached context to determine which attributes matter for this category
+and which should be ignored.
 
-CRITICAL RULE: Size, capacity, weight, pack count, and model number are ALWAYS primary attributes for ALL products, regardless of category.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-STEP 1 — EXTRACT SPECS FROM IMAGES (OCR)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Carefully read ALL text written directly on the product or its packaging in each image.
-Focus on extracting specs that are PRIMARY ATTRIBUTES for the detected category.
-
-WHAT TO EXTRACT (concrete specs that uniquely identify or describe the product):
-  ✔ Size / dimensions (e.g., "XL", "10 oz", "5'x8'", "12x24 in")
-  ✔ Count / pack size  (e.g., "2-Pack", "Set of 4", "Count: 6")
-  ✔ Model number / style name (e.g., "LMS04 88175", "Duchess", "Model A200")
-  ✔ Color name / finish type (e.g., "Matte", "Glossy", "Semi-Gloss", "Cobalt Blue")
-  ✔ Weight / volume with units (e.g., "500g", "1.5 lbs", "750ml")
-  ✔ Compatibility statements (e.g., "Compatible with Samsung Series 7")
-  ✔ Pile height (for rugs) (e.g., "0.5 in pile")
-  ✔ Numeric identifiers visible on the product itself
-
-WHAT TO IGNORE (do not extract or flag):
-  ✗ Generic marketing slogans ("Great Value!", "New & Improved", "Best Quality")
-  ✗ Subjective adjectives without numeric backing ("Natural", "Vibrant", "Pro", "Premium")
-  ✗ Brand logos or retailer names
-  ✗ Nutritional/ingredient details UNLESS the product IS a food and the field mismatch is on flavor or life-stage
-  ✗ Background text, barcodes, or decorative patterns
-
-CRITICAL — FINISH TYPE (paint/coatings category):
-  If the product is a paint or coating, you MUST read and report the finish type (Matte, Flat, Eggshell,
-  Satin, Semi-Gloss, Gloss, High-Gloss) from the image label as a primary spec. This is NOT optional.
-
-If no spec text at all is readable on the images, write "None" and do NOT flag a contradiction.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-STEP 2 — COMPARE IMAGE SPECS VS TEXT ATTRIBUTES
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Compare only the extracted image specs against the provided Text Attributes and Title.
-
-FLAG as a contradiction ONLY when:
-  • An extracted spec explicitly and directly contradicts an attribute (e.g., image says "2-Pack"
-    but attribute says "Count: 1"; image says "Matte" but attribute says "Finish: Gloss").
-  • Numeric values with the same units differ (e.g., "10 oz" on image vs "16 oz" in attributes).
-  • A model number or style name on the image differs from the model/style in the attributes.
-
-DO NOT FLAG:
-  • Missing information (attribute not on image = not a contradiction).
-  • Differences in marketing language or subjective descriptions.
-  • Ambiguous cases where the image text could refer to a related but non-conflicting spec.
-
-Respond STRICTLY with a JSON object — no markdown, no backticks:
+Respond with JSON only (no markdown, no backticks):
 {{
-  "detected_category": "string (category you detected in Step 0)",
+  "detected_category": "string",
+  "matched_sop_rules": ["list of scenario_ids that were consulted"],
   "primary_attributes_checked": ["list of attribute names relevant for this category"],
-  "extracted_image_specs": "string (concise summary of specs read from images, or 'None')",
+  "extracted_image_specs": "string (concise summary of specs from images, or 'None')",
   "hasInconsistency": boolean,
   "inconsistencies": [
     {{
-      "field": "string (the attribute or spec in question)",
-      "imageValue": "string (exact spec text from image)",
-      "textValue": "string (exact text from product attributes)",
-      "reason": "string (precise explanation of the contradiction)"
+      "field": "string",
+      "imageValue": "string",
+      "textValue": "string",
+      "reason": "string"
     }}
   ]
 }}
 """
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  BATCH ANALYSIS PROMPT  (multi-GTIN duplicate / bad-data check)
-# ─────────────────────────────────────────────────────────────────────────────
 BATCH_ANALYSIS_PROMPT = """
-You are a strict product data-consistency and duplicate-detection system.
-I will provide multiple product listings. Each has a product_id, title, description, text attributes, and images.
+TASK: Perform a full duplicate/non-duplicate/bad-data analysis on the following products.
 
-════════════════════════════════════════════════════════════════
-STEP 0 — DETECT PRODUCT CATEGORY FOR EACH PRODUCT
-════════════════════════════════════════════════════════════════
-Before any other analysis, infer the product category for each product_id from its title and attributes.
-Use the category to determine which attributes are PRIMARY (essential for identity checks) and which are NOISE.
+INSTRUCTIONS:
+1. For each product, detect its category and find matching SOP rules from the cached context
+2. PHASE 1 (Vertical Check): For each product individually, extract image specs via OCR and
+   check for contradictions against text attributes. Apply the SOP rules to determine if
+   attributes should be ignored for the category.
+3. PHASE 2 (Horizontal Check): Compare products that pass Phase 1 against each other.
+   Apply the SOP rules for clustering decisions — check which scenario matches and use
+   its DECISION (Duplicate / Not a Duplicate / Not sure - Bad data).
 
-PRIMARY ATTRIBUTES BY CATEGORY (use as your checklist — non-exhaustive):
-  • Clothing / footwear       → size, color, gender, material, style name/number
-  • Rugs / carpets            → dimensions (length × width), pile height, color, material, style name
-  • Furniture (beds/sofas/chairs) → dimensions, color, material, style/model name
-  • Electronics / remotes     → model number, compatibility (device/brand), voltage, capacity
-  • Paint / coatings          → finish type (Matte/Flat/Eggshell/Satin/Semi-Gloss/Gloss), color name + code, volume/size
-  • Food / beverages          → flavor, count/pack size, weight/volume
-  • Pet supplies (food/treats)→ animal type, flavor/variety, life-stage, weight
-  • Bedding                   → size (Twin/Full/Queen/King), material, thread count, color/pattern
-  • Tools / hardware          → model number, dimensions, material, voltage/wattage
-  • All other / General       → size/dimensions/measurements, count/pack size, model number, style name, capacity/volume
+CRITICAL RULES FROM SOP:
+- Attributes listed as "Ignore Attributes" in matching SOP rules must NOT affect decisions
+- Do not flag 'Bad Data' just because a specific attribute is missing (-) if that information is clearly stated in the title, description, or under a synonymous attribute name.
+- When a rule specifies visual_check=REQUIRED, images MUST be verified
+- COUNT VERIFICATION (ALL CATEGORIES): Pay extremely close attention to the Unit of Measurement (UOM) in images and text. Distinguish between 'Package-Level Count' (e.g., 1 Box, 1 Case) and 'Item-Level Count' (e.g., 60 Pills, 12 Pencils, 24 Bottles). If an attribute like 'Total Count' or 'Multipack Quantity' is '1', it almost always refers to '1 retail package being sold'. Do NOT flag 'Total Count: 1' as a contradiction against 'Count Per Pack: 60' or a product image showing '60 Ct'. As long as the hierarchical math (Packages × Items Per Package) is logically consistent, it is a PERFECT match, not Bad Data.
+- PACKAGING HORIZONTAL RULES: A 2x30 configuration (2 bottles of 30) is NOT a duplicate of a 1x60 configuration (1 bottle of 60). Even if total units are the same, different package structures must be clustered separately (e.g., 'Not a Duplicate - Variant').
+- PACKAGING TYPE RULES: Pay attention to the physical container type. A bottle is NOT a duplicate of a blister pack, and a blister pack is NOT a duplicate of a strip. Cluster these separately.
+- CLUSTERING LOGIC: Group identical/duplicate products into a single cluster together in the `product_ids` array. 
+- CLUSTERING LOGIC: If a product is a variant (e.g., different packaging type or configuration) or completely unique from the others, it must be placed in its own standalone cluster.
+- CLUSTERING LOGIC: Bad data products MUST be separated into their own individual clusters, never merged with any other product.
+- Different sizes, model numbers, or finish types = SEPARATE clusters always
+- You MUST assign exactly ONE of the following official actions to each cluster:
+  * "Duplicate" (Use if the cluster contains multiple identical items, or if the item perfectly matches the primary group)
+  * "Not a Duplicate" (Use if the cluster contains a unique item completely different from the primary group)
+  * "Not a Duplicate - Variant"
+  * "Not a Duplicate - Variant Attribute Data Not Available"
+  * "Not a Duplicate - Incorrect Variant Attribute Names"
+  * "Not a Duplicate - Incorrect Variant Attribute Name Data Not Available"
+  * "Not Duplicate - Different Compatibility"
+  * "Not Duplicate - Different Warranty"
+  * "Not Sure - Bad Data"
 
-CRITICAL RULE: Size, capacity, weight, pack count, and model number are ALWAYS primary attributes for ALL products, regardless of category.
-
-NOISE ATTRIBUTES (ignore these in ALL categories — do not use them to flag differences or similarities):
-  • Generic marketing words: "Natural", "Premium", "Pro", "Max", "New", "Improved", "Best", "Clear"
-  • Subjective descriptors not tied to a concrete spec: "Vibrant", "Soft", "Durable", "Fresh"
-  • Nutritional breakdowns (calories, sugar, fat) UNLESS product IS a food and flavor is the question
-  • Certifications / awards (unless directly part of a claimed identity spec)
-  • Background decorative text, barcodes, retailer tags in images
-
-════════════════════════════════════════════════════════════════
-PHASE 1 — VERTICAL CHECK (BAD DATA — per product)
-════════════════════════════════════════════════════════════════
-For each product individually:
-
-A) IMAGE OCR — EXTRACT PRIMARY SPECS FROM IMAGES
-   Read ALL text written directly on the product or packaging in every image provided.
-   You MUST attempt to read:
-     ✔ Size / dimensions with units (e.g., "XL", "5'x8'", "10 oz", "750ml", "500g", "29/64\"", "3/8\"")
-     ✔ Count / pack size (e.g., "2-Pack", "Set of 4", "6 Count")
-     ✔ Model number / style name (e.g., "LMS04 88175", "Duchess", "A200")
-     ✔ Color name (e.g., "Cobalt Blue", "Charcoal Grey")
-     ✔ FINISH TYPE — MANDATORY for paint/coatings: read and report "Matte", "Flat", "Eggshell",
-       "Satin", "Semi-Gloss", "Gloss", or "High-Gloss" exactly as printed on the can/label.
-     ✔ Compatibility text (e.g., "For Samsung Series 7")
-     ✔ Pile height for rugs (e.g., "0.5\" pile", "Low pile")
-     ✔ Numeric identifiers physically printed on the product
-
-   IMPORTANT — DO NOT report:
-     ✗ Marketing slogans or subjective phrases (see NOISE list above)
-     ✗ Ingredients / nutritional panels (unless flavor/variety is in question for food products)
-     ✗ Logos, brand names, retailer labels
-     ✗ If genuinely no spec text is readable, set extracted_image_specs = "None" — this is valid and does NOT trigger bad_data.
-
-B) CONTRADICTION CHECK
-   Compare the extracted image specs against the product's Text Attributes and Title.
-   
-   FLAG has_bad_data = true ONLY when an extracted spec DIRECTLY contradicts an attribute:
-     ✔ Different size/count on image vs attributes (e.g., "2-Pack" image, "Count: 1" attribute)
-     ✔ Different model number (e.g., "LMS04" image vs "LMS01" attribute)
-     ✔ Different finish type for paint (e.g., "Matte" image vs "Gloss" attribute)
-     ✔ Different numeric value with same unit (e.g., "10 oz" image vs "16 oz" attribute)
-     ✔ Different style/variant name (e.g., "Duchess" image vs "Noblesse" attribute)
-
-   DO NOT flag has_bad_data for:
-     ✗ Missing info (spec not on image = no contradiction)
-     ✗ Junk/marketing text differences
-     ✗ Ambiguous cases that could be consistent with a different reading
-
-════════════════════════════════════════════════════════════════
-PHASE 2 — HORIZONTAL CHECK (DUPLICATE CLUSTERING)
-════════════════════════════════════════════════════════════════
-For products that PASS Phase 1 (has_bad_data = false), compare them against each other.
-Also include products with bad data in their own separate cluster (they cannot be merged with clean products).
-
-CLUSTERING RULES — apply in strict priority order:
-
-RULE 1 — EXTRACTED IMAGE SPECS TAKE ABSOLUTE PRIORITY:
-  If the extracted_image_specs of two products contain ANY differing size, dimensions, count, capacity, volume, model number, finish type, style name, color, or other primary attribute, those products MUST be placed in SEPARATE clusters — even if ALL table attributes are identical.
-  Any differing numeric measurement or size (such as "29/64\"" vs "3/8\"") means they are NOT DUPLICATES.
-  Identical table attributes alone are NEVER sufficient to call two products duplicates if their image specs differ.
-
-RULE 2 — TEXT ATTRIBUTE DIFFERENCES ON PRIMARY ATTRIBUTES:
-  If two products have different values for any PRIMARY ATTRIBUTE in their text attributes
-  (e.g., different model, different size, different compatibility), place them in SEPARATE clusters,
-  even if the extracted image specs are both "None".
-
-RULE 3 — JUNK ATTRIBUTE DIFFERENCES ARE IGNORED:
-  Differences ONLY in NOISE attributes (marketing words, junk descriptions, extra irrelevant fields)
-  must NOT be used to separate products into different clusters.
-  If two products are identical on all PRIMARY attributes, they are duplicates even if their
-  description contains different filler text.
-
-RULE 4 — PRODUCTS WITH BAD DATA:
-  Any product with has_bad_data = true goes into its own individual cluster labeled "Bad Data — [product_id]".
-  It must NEVER be merged with another product, even if table attributes look identical.
-
-RULE 5 — FINISH TYPE FOR PAINT (mandatory separation):
-  Two paint products with the same color but DIFFERENT finish types (e.g., Matte vs Semi-Gloss)
-  are VARIANTS, not duplicates. They MUST be in separate clusters.
-
-RULE 6 — SIZE UNITS AWARENESS:
-  When comparing sizes, normalize units before comparing (e.g., "10 oz" ≠ "16 oz"; "5'x8'" ≠ "8'x10'"; "29/64\"" ≠ "3/8\"").
-  If a size or dimension difference exists in the image specs, that alone is sufficient to separate clusters.
-
-DEFINING A CLUSTER:
-  A "cluster" represents a group of products that are identical duplicates and can be merged.
-  - True duplicates MUST be grouped in the same cluster.
-  - Products that are VARIANTS (e.g. different size, color, finish, count) or UNIQUE products MUST be placed in SEPARATE clusters (each in its own object in the `horizontal_clustering` array).
-  - If you have 2 products and they are variants of each other, you MUST output 2 separate clusters in the array, each containing exactly one product ID. Do NOT group them into a single cluster.
-
-CLUSTER LABELS:
-  Use descriptive names:
-    • "Duplicates — [shared product type/color/model]"   (for a cluster containing multiple identical product IDs)
-    • "Variant — [product_id] ([what differs])"           (for a cluster containing exactly ONE product ID)
-    • "Unique — [product_id]"                            (for a cluster containing exactly ONE product ID)
-    • "Bad Data — [product_id]"                          (for Phase 1 failures, containing exactly ONE product ID)
-
-════════════════════════════════════════════════════════════════
-OUTPUT FORMAT
-════════════════════════════════════════════════════════════════
-Respond STRICTLY with this JSON — no markdown, no backticks:
+Respond with JSON only (no markdown, no backticks):
 {
   "vertical_checks": [
     {
-      "product_id": "string",
-      "detected_category": "string (category from Step 0)",
-      "primary_attributes_checked": ["list of attribute names relevant for this category"],
-      "extracted_image_specs": "string (concise summary of readable spec text from images, or 'None')",
+      "product_id": "Exact string from the PRODUCT ID header (e.g. 'GTIN#1 (007...)')",
+      "detected_category": "string",
+      "matched_sop_rules": ["scenario_ids consulted"],
+      "extracted_image_summary": "string (ultra-brief 5-10 word summary of key visual specs seen in the image)",
       "has_bad_data": boolean,
-      "reason": "string (HIGHLY DESCRIPTIVE — state exactly what text was read from the image, what text was in the table/description, and precisely where the contradiction is. If no bad data, explain why the product passes.)",
+      "reason": "string (ULTRA-SHORT 1-2 sentence summary. Focus only on the main difference or missing attribute. DO NOT write long paragraphs.)",
       "mismatch_details": [
         {
-          "field": "string (exact attribute name)",
-          "imageValue": "string (exact spec text from image)",
-          "textValue": "string (exact text from product attributes)"
+          "field": "string (only include fields that actually contradict)",
+          "imageValue": "string",
+          "textValue": "string"
         }
       ]
     }
   ],
   "horizontal_clustering": [
     {
-      "cluster_name": "string (descriptive label per CLUSTER LABELS above)",
-      "product_ids": ["string", "string"],
-      "cluster_type": "string (one of: 'duplicate', 'variant', 'unique', 'bad_data')",
-      "reason": "string (HIGHLY DESCRIPTIVE — state exactly which PRIMARY attributes were compared, what the values were for each product_id, and specifically WHY they are together or apart. If separated due to image spec differences, name the exact spec text and product IDs. If merged as duplicates, confirm both primary attribute match AND image spec match or both are 'None'.)"
+      "cluster_name": "string (descriptive label)",
+      "product_ids": ["string"],
+      "cluster_type": "string (duplicate|variant|unique|bad_data)",
+      "recommended_action": "Exact string from the official actions list above",
+      "matched_sop_rule": "scenario_id that determined this clustering",
+      "reason": "string (ULTRA-SHORT 1-2 sentence summary. Focus only on the main difference or missing attribute. DO NOT write long paragraphs.)"
     }
   ]
 }
 """
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  ANALYSIS FUNCTIONS
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _build_image_parts(image_data_list: list) -> list:
+    """Convert fetched image dicts to genai Part objects."""
+    parts = []
+    for img in image_data_list:
+        if img:
+            parts.append(
+                types.Part.from_bytes(
+                    data=base64.b64decode(img["data"]),
+                    mime_type=img["mime_type"]
+                )
+            )
+    return parts
 
 
 async def process_analysis(title, attributes, imageUrls):
@@ -371,8 +378,8 @@ async def process_analysis(title, attributes, imageUrls):
     )
 
     image_parts = []
-    async with httpx.AsyncClient() as client:
-        tasks = [fetch_image(client, url) for url in imageUrls]
+    async with httpx.AsyncClient() as http_client:
+        tasks = [fetch_image(http_client, url) for url in imageUrls]
         fetched_images = await asyncio.gather(*tasks)
         for img in fetched_images:
             if img:
@@ -382,32 +389,27 @@ async def process_analysis(title, attributes, imageUrls):
         return {"status": "error", "message": "Could not fetch any images."}
 
     try:
-        model = genai.GenerativeModel('gemini-2.5-flash-lite')
-        contents = [prompt]
-        for img in image_parts:
-            contents.append(img)
+        print("\n" + "=" * 50)
+        print("🚀 SENDING REQUEST TO GEMINI (Single Analysis — Context Cached)")
+        print("=" * 50)
 
-        print("\n" + "="*50)
-        print("🚀 SENDING REQUEST TO GEMINI (Single Analysis)")
-        print("="*50)
-        for idx, item in enumerate(contents):
-            if isinstance(item, str):
-                print(f"--- Text Part {idx} ---\n{item}\n")
-            elif isinstance(item, dict):
-                print(f"--- Image Part {idx} --- [Mime Type: {item.get('mime_type')}, Data Length: {len(item.get('data', ''))}]")
-        print("="*50 + "\n")
+        # Build content parts: text prompt + images
+        content_parts = [types.Part.from_text(text=prompt)]
+        content_parts.extend(_build_image_parts(image_parts))
 
-        response = model.generate_content(contents)
+        contents = [types.Content(role="user", parts=content_parts)]
 
-        if not response.text:
+        response_text = generate_with_cache(contents)
+
+        if not response_text:
             return {"status": "error", "message": "no response by ai"}
 
-        text = response.text.strip()
-        print("\n" + "="*50)
+        text = response_text.strip()
+        print("\n" + "=" * 50)
         print("✅ RECEIVED RESPONSE FROM GEMINI (Single Analysis)")
-        print("="*50)
+        print("=" * 50)
         print(f"{text}")
-        print("="*50 + "\n")
+        print("=" * 50 + "\n")
         text = text.replace("```json", "").replace("```", "").strip()
 
         return {"status": "success", "data": json.loads(text)}
@@ -420,11 +422,26 @@ async def process_analysis(title, attributes, imageUrls):
         return {"status": "error", "message": str(e)}
 
 
-async def process_batch_analysis(products):
-    contents = [BATCH_ANALYSIS_PROMPT]
+MAX_RETRIES = 1
 
-    async with httpx.AsyncClient() as client:
-        seen_image_sets = {}
+
+async def process_batch_analysis(products):
+    n = len(products)
+
+    # Inject cardinality constraint into the prompt so Gemini knows EXACTLY
+    # how many products to output.  Without this the model occasionally drops
+    # one product from vertical_checks or horizontal_clustering.
+    cardinal_prompt = BATCH_ANALYSIS_PROMPT + (
+        f"\n\nCRITICAL — You are analyzing EXACTLY {n} products.  "
+        f"Your vertical_checks array MUST contain EXACTLY {n} entries — "
+        f"one for each product_id listed above.  "
+        f"Do NOT skip, merge, or omit ANY product."
+    )
+    content_parts = [types.Part.from_text(text=cardinal_prompt)]
+
+    async with httpx.AsyncClient() as http_client:
+        seen_image_sets = {}      # url_signature → first_prod_id
+        image_cache = {}          # url_signature → [fetched_image_dict, ...]
 
         for p in products:
             prod_id = p.get('id', 'Unknown')
@@ -435,61 +452,168 @@ async def process_batch_analysis(products):
                 f"Attributes: {json.dumps(p.get('attributes', {}), indent=2)}\n"
                 f"Images for {prod_id}:"
             )
-            contents.append(prod_text)
+            content_parts.append(types.Part.from_text(text=prod_text))
 
             urls = p.get('imageUrls', [])
 
             if not urls:
-                contents.append("[No Images Provided for this product]")
+                content_parts.append(types.Part.from_text(text="[No Images Provided for this product]"))
                 continue
 
             url_signature = tuple(sorted(list(set(urls))))
 
-            if url_signature in seen_image_sets:
-                first_prod_id = seen_image_sets[url_signature]
-                contents.append(
-                    f"[The images for this product are EXACTLY identical to the images provided above "
-                    f"for PRODUCT ID: {first_prod_id}. Please reference those images and use the same "
-                    f"extracted_image_specs for this product as you determined for {first_prod_id}.]"
-                )
+            if url_signature in image_cache:
+                # Images already fetched for a previous product — reuse cached
+                # bytes instead of fetching again AND instead of sending a text
+                # placeholder. This saves network round-trips while still giving
+                # Gemini the actual images so it can independently analyze every
+                # product (not dropping deduped entries).
+                cached = image_cache[url_signature]
+                has_img = False
+                for img in cached:
+                    if img:
+                        content_parts.append(
+                            types.Part.from_bytes(
+                                data=base64.b64decode(img["data"]),
+                                mime_type=img["mime_type"]
+                            )
+                        )
+                        has_img = True
+                if not has_img:
+                    content_parts.append(types.Part.from_text(
+                        text="[No Images Could Be Fetched for this product]"
+                    ))
             else:
                 seen_image_sets[url_signature] = prod_id
-                tasks = [fetch_image(client, url) for url in urls]
+                tasks = [fetch_image(http_client, url) for url in urls]
                 fetched_images = await asyncio.gather(*tasks)
+                # Cache the result so duplicate image-sets don't re-fetch
+                image_cache[url_signature] = fetched_images
 
                 has_img = False
                 for img in fetched_images:
                     if img:
-                        contents.append(img)
+                        content_parts.append(
+                            types.Part.from_bytes(
+                                data=base64.b64decode(img["data"]),
+                                mime_type=img["mime_type"]
+                            )
+                        )
                         has_img = True
 
                 if not has_img:
-                    contents.append("[No Images Could Be Fetched — treat extracted_image_specs as 'None' for this product]")
+                    content_parts.append(types.Part.from_text(
+                        text="[No Images Could Be Fetched — treat extracted_image_specs as 'None' for this product]"
+                    ))
 
     try:
-        print("\n" + "="*50)
-        print("🚀 SENDING REQUEST TO GEMINI (Batch Analysis)")
-        print("="*50)
-        for idx, item in enumerate(contents):
-            if isinstance(item, str):
-                print(f"--- Text Part {idx} ---\n{item}\n")
-            elif isinstance(item, dict):
-                print(f"--- Image Part {idx} --- [Mime Type: {item.get('mime_type')}, Data Length: {len(item.get('data', ''))}]")
-        print("="*50 + "\n")
+        print("\n" + "=" * 50)
+        print("🚀 SENDING REQUEST TO GEMINI (Batch Analysis — Context Cached)")
+        print("=" * 50)
 
-        model = genai.GenerativeModel('gemini-2.5-flash-lite')
-        response = model.generate_content(contents)
+        # Log what we're sending (text parts only, not image bytes)
+        for idx, part in enumerate(content_parts):
+            if hasattr(part, 'text') and part.text:
+                print(f"--- Text Part {idx} ---\n{part.text[:200]}...\n")
+            else:
+                print(f"--- Image Part {idx} ---")
+        print("=" * 50 + "\n")
 
-        if not response.text:
+        contents = [types.Content(role="user", parts=content_parts)]
+        response_text = generate_with_cache(contents)
+
+        if not response_text:
             return {"status": "error", "message": "no response by ai"}
 
-        text = response.text.strip().replace("```json", "").replace("```", "").strip()
-        print("\n" + "="*50)
+        text = response_text.strip().replace("```json", "").replace("```", "").strip()
+        print("\n" + "=" * 50)
         print("✅ RECEIVED RESPONSE FROM GEMINI (Batch Analysis)")
-        print("="*50)
+        print("=" * 50)
         print(f"{text}")
-        print("="*50 + "\n")
-        return {"status": "success", "data": json.loads(text)}
+        print("=" * 50 + "\n")
+
+        data = json.loads(text)
+        output_ids = {v['product_id'] for v in data.get('vertical_checks', [])}
+        input_ids = {p.get('id', 'Unknown') for p in products}
+        
+        missing_ids = set()
+        for i_id in input_ids:
+            if not any(i_id in o_id or o_id in i_id for o_id in output_ids):
+                missing_ids.add(i_id)
+
+        retries_left = MAX_RETRIES
+        while missing_ids and retries_left > 0:
+            retries_left -= 1
+            print(f"\n⚠ Retrying — Gemini returned {len(output_ids)}/{n} products. "
+                  f"Missing: {missing_ids}")
+
+            correction = (
+                f"\n\n--- CORRECTION ---\n"
+                f"You only returned {len(output_ids)} vertical_checks entries, "
+                f"but there are {n} products.  "
+                f"You MISSED product(s): {missing_ids}.  "
+                f"Please output the COMPLETE analysis for ALL {n} products "
+                f"— vertical_checks MUST contain exactly {n} entries.  "
+                f"Every product_id below MUST appear exactly once."
+            )
+            content_parts.append(types.Part.from_text(text=correction))
+            contents = [types.Content(role="user", parts=content_parts)]
+            retry_text = generate_with_cache(contents)
+
+            if not retry_text:
+                print("  Retry gave empty response, keeping original.")
+                break
+
+            retry_text = retry_text.strip().replace("```json", "").replace("```", "").strip()
+            try:
+                retry_data = json.loads(retry_text)
+            except json.JSONDecodeError:
+                print("  Retry JSON parse failed, keeping original.")
+                break
+
+            retry_ids = {v['product_id'] for v in retry_data.get('vertical_checks', [])}
+            newly_missing = set()
+            for i_id in input_ids:
+                if not any(i_id in o_id or o_id in i_id for o_id in retry_ids):
+                    newly_missing.add(i_id)
+                    
+            recovered = len(missing_ids) - len(newly_missing)
+            if recovered > 0:
+                print(f"  ✅ Retry recovered {recovered} product(s) "
+                      f"({len(retry_ids)} total, still missing {newly_missing})")
+                # Merge: keep all retry entries + any original entries that
+                # the retry omitted (product_id collision → prefer retry).
+                original_vc = data.get('vertical_checks', [])
+                seen_ids = set()
+                merged = []
+                for entry in retry_data.get('vertical_checks', []):
+                    merged.append(entry)
+                    seen_ids.add(entry['product_id'])
+                for entry in original_vc:
+                    if entry['product_id'] not in seen_ids:
+                        merged.append(entry)
+                        seen_ids.add(entry['product_id'])
+                # Re-sort to match input product order
+                id_order = [p.get('id', 'Unknown') for p in products]
+                merged.sort(key=lambda v: id_order.index(v['product_id'])
+                            if v['product_id'] in id_order else len(id_order))
+                data['vertical_checks'] = merged
+                # Use retry's clustering (it should be more complete)
+                data['horizontal_clustering'] = retry_data.get(
+                    'horizontal_clustering',
+                    data.get('horizontal_clustering', [])
+                )
+                # Update tracking for the loop guard
+                output_ids = input_ids - newly_missing
+                missing_ids = newly_missing
+            else:
+                print("  Retry did not improve, keeping original response.")
+                break
+
+        if missing_ids:
+            print(f"⚠ FINAL: {len(missing_ids)} product(s) still missing after retries: {missing_ids}")
+
+        return {"status": "success", "data": data}
 
     except json.JSONDecodeError:
         print("Failed to parse JSON:", text)
@@ -499,9 +623,50 @@ async def process_batch_analysis(products):
         return {"status": "error", "message": str(e)}
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  FLASK APP & ROUTES
+# ─────────────────────────────────────────────────────────────────────────────
+app = Flask(__name__)
+CORS(app)
+
+
 @app.route("/", methods=["GET"])
 def index():
-    return jsonify({"status": "running", "message": "DupCheck Backend is active and listening."})
+    cache_status = "active" if _cached_content else "inactive (fallback mode)"
+    return jsonify({
+        "status": "running",
+        "message": "DupCheck Backend is active and listening.",
+        "context_cache": cache_status,
+        "cache_name": _cached_content.name if _cached_content else None,
+    })
+
+
+@app.route("/api/cache-status", methods=["GET"])
+def cache_status():
+    """Check the current state of the context cache."""
+    if _cached_content:
+        return jsonify({
+            "cached": True,
+            "cache_name": _cached_content.name,
+            "model": GEMINI_MODEL,
+            "ttl_hours": CACHE_TTL_HOURS,
+        })
+    else:
+        return jsonify({
+            "cached": False,
+            "message": "No active context cache. Rules sent inline per request.",
+        })
+
+
+@app.route("/api/cache-refresh", methods=["POST"])
+def cache_refresh():
+    """Force-refresh the context cache (e.g., after updating rules.json)."""
+    delete_rule_cache()
+    create_rule_cache()
+    if _cached_content:
+        return jsonify({"status": "success", "cache_name": _cached_content.name})
+    else:
+        return jsonify({"status": "error", "message": "Cache creation failed"}), 500
 
 
 @app.route("/test-ai", methods=["GET"])
@@ -569,6 +734,15 @@ def analyze_batch():
     return jsonify(result)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  STARTUP & SHUTDOWN
+# ─────────────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
+    # Create context cache on startup
+    create_rule_cache()
+
+    # Register cleanup on shutdown (delete cache to stop billing)
+    atexit.register(delete_rule_cache)
+
     print("DupCheck backend running on http://localhost:8000")
     app.run(host="0.0.0.0", port=8000, debug=True)
