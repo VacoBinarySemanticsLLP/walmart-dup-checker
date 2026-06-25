@@ -123,18 +123,37 @@ def generate_with_cache(contents: list) -> str:
     Generate content using the cached context if available.
     Falls back to sending rules inline if cache is not available.
     """
+    global _cached_content
     cache_name = get_model()
 
+    response = None
     if cache_name:
         # Cached mode — rules are already in the cache, just send product data
-        response = client.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=contents,
-            config=types.GenerateContentConfig(
-                cached_content=cache_name
+        try:
+            response = client.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=contents,
+                config=types.GenerateContentConfig(
+                    cached_content=cache_name
+                )
             )
-        )
-    else:
+        except Exception as e:
+            if "CachedContent not found" in str(e) or "403" in str(e) or "PERMISSION_DENIED" in str(e):
+                print(f"⚠️  Cache error detected: {e}. Recreating cache and retrying...")
+                create_rule_cache()
+                cache_name = get_model()
+                if cache_name:
+                    response = client.models.generate_content(
+                        model=GEMINI_MODEL,
+                        contents=contents,
+                        config=types.GenerateContentConfig(
+                            cached_content=cache_name
+                        )
+                    )
+            else:
+                raise e
+
+    if not response:
         # Fallback — send compiled rules inline (more expensive)
         compiled_rules = compile_rules()
         full_contents = [compiled_rules] + contents
