@@ -35,7 +35,12 @@ window.analyzeProductWithGemini = async function(product) {
     });
 
     if (!response.ok) {
-      throw new Error(`Backend responded with status ${response.status}`);
+      let errMsg = `Backend responded with status ${response.status}`;
+      try {
+        const errJson = await response.json();
+        if (errJson.message) errMsg = errJson.message;
+      } catch (e) {}
+      throw new Error(errMsg);
     }
 
     const result = await response.json();
@@ -44,12 +49,11 @@ window.analyzeProductWithGemini = async function(product) {
     if (result.status === 'success') {
       return result.data; // { hasInconsistency: true/false, inconsistencies: [...] }
     } else {
-      console.warn('🤖 DupCheck AI: Gemini Analysis failed:', result.message);
-      return null;
+      throw new Error(result.message || 'Gemini Analysis failed');
     }
   } catch (error) {
     console.error('Failed to communicate with backend:', error);
-    return null;
+    throw error;
   }
 };
 
@@ -123,7 +127,12 @@ window.analyzeBatchWithGemini = async function(products, forceRefresh = false) {
     });
 
     if (!response.ok) {
-      throw new Error(`Backend responded with status ${response.status}`);
+      let errMsg = `Backend responded with status ${response.status}`;
+      try {
+        const errJson = await response.json();
+        if (errJson.message) errMsg = errJson.message;
+      } catch (e) {}
+      throw new Error(errMsg);
     }
 
     const result = await response.json();
@@ -132,11 +141,10 @@ window.analyzeBatchWithGemini = async function(products, forceRefresh = false) {
     if (result.status === 'success') {
       return result.data;
     } else {
-      console.warn('🤖 DupCheck AI: Gemini Batch Analysis failed:', result.message);
-      return null;
+      throw new Error(result.message || 'Gemini Batch Analysis failed');
     }
   } catch (error) {
     console.error('Failed to communicate with backend:', error);
-    return null;
+    throw error;
   }
 };

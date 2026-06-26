@@ -245,7 +245,7 @@ def generate_with_cache(contents: list) -> str:
         print(f"  ❌ Retry also failed: {retry_err}")
 
     print(f"  ❌ Gemini returned no text even after retry. Finish reason was: {finish_reason}")
-    return None
+    raise Exception(f"Gemini API blocked response or returned no text. Finish reason: {finish_reason}")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -497,6 +497,23 @@ def _build_image_parts(image_data_list: list) -> list:
     return parts
 
 
+def format_error(e: Exception) -> tuple[int, str]:
+    err_str = str(e)
+    code = getattr(e, 'code', 500)
+    msg = getattr(e, 'message', err_str)
+    
+    if "RECITATION" in err_str:
+        return 400, f"[API 400] Gemini blocked the response due to a Recitation/Copyright filter."
+    elif "SAFETY" in err_str or "HARM_CATEGORY" in err_str:
+        return 400, f"[API 400] Gemini blocked the response due to Safety filters."
+    elif "Quota" in err_str or "429" in err_str:
+        return 429, f"[HTTP 429] Gemini API Quota Exceeded or Rate Limited."
+    elif "403" in err_str or "PERMISSION_DENIED" in err_str:
+        return 403, f"[HTTP 403] Gemini API Authentication or Permission Error."
+    
+    return code, f"[HTTP {code}] {msg}"
+
+
 async def process_analysis(title, attributes, imageUrls):
     prompt = SINGLE_ANALYSIS_PROMPT_TEMPLATE.format(
         title=title,
@@ -512,7 +529,7 @@ async def process_analysis(title, attributes, imageUrls):
                 image_parts.append(img)
 
     if not image_parts:
-        return {"status": "error", "message": "Could not fetch any images."}
+        return {"status": "error", "message": "[HTTP 400] Could not fetch any images.", "status_code": 400}
 
     try:
         print("\n" + "=" * 50)
@@ -528,7 +545,7 @@ async def process_analysis(title, attributes, imageUrls):
         response_text = generate_with_cache(contents)
 
         if not response_text:
-            return {"status": "error", "message": "no response by ai"}
+            raise Exception("Gemini API returned an empty response.")
 
         text = response_text.strip()
         print("\n" + "=" * 50)
@@ -542,10 +559,11 @@ async def process_analysis(title, attributes, imageUrls):
 
     except json.JSONDecodeError:
         print("Failed to parse JSON:", text)
-        return {"status": "error", "message": "Invalid JSON response from AI"}
+        return {"status": "error", "message": "[API 422] Invalid JSON response from AI.", "status_code": 422}
     except Exception as e:
         print("Analysis Error:", e)
-        return {"status": "error", "message": str(e)}
+        code, msg = format_error(e)
+        return {"status": "error", "message": msg, "status_code": code}
 
 
 MAX_RETRIES = 1
@@ -649,7 +667,7 @@ async def process_batch_analysis(products):
         response_text = generate_with_cache(contents)
 
         if not response_text:
-            return {"status": "error", "message": "no response by ai"}
+            raise Exception("Gemini API returned an empty response.")
 
         text = response_text.strip().replace("```json", "").replace("```", "").strip()
         print("\n" + "=" * 50)
@@ -743,10 +761,11 @@ async def process_batch_analysis(products):
 
     except json.JSONDecodeError:
         print("Failed to parse JSON:", text)
-        return {"status": "error", "message": "Invalid JSON response from AI"}
+        return {"status": "error", "message": "[API 422] Invalid JSON response from AI.", "status_code": 422}
     except Exception as e:
         print("Batch Analysis Error:", e)
-        return {"status": "error", "message": str(e)}
+        code, msg = format_error(e)
+        return {"status": "error", "message": msg, "status_code": code}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -820,12 +839,12 @@ def analyze_column():
     imageUrls = req_data.get("imageUrls", [])
 
     if not imageUrls:
-        return jsonify({"status": "no_images", "message": "No image URLs provided for analysis."})
+        return jsonify({"status": "error", "message": "[HTTP 400] No image URLs provided for analysis.", "status_code": 400}), 400
 
     result = asyncio.run(process_analysis(title, attributes, imageUrls))
 
     if result.get("status") == "error":
-        return jsonify(result), 500
+        return jsonify(result), result.get("status_code", 500)
 
     return jsonify(result)
 
@@ -839,7 +858,7 @@ def analyze_batch():
     print(f"Received batch analysis request for {len(products)} products (Force Refresh: {force_refresh})")
 
     if not products:
-        return jsonify({"status": "error", "message": "No products provided for analysis."}), 400
+        return jsonify({"status": "error", "message": "[HTTP 400] No products provided for analysis.", "status_code": 400}), 400
 
     cache_key = get_cache_key(products)
     cache = get_cache()
@@ -855,7 +874,7 @@ def analyze_batch():
         cache[cache_key] = result
         save_cache(cache)
     elif result.get("status") == "error":
-        return jsonify(result), 500
+        return jsonify(result), result.get("status_code", 500)
 
     return jsonify(result)
 
