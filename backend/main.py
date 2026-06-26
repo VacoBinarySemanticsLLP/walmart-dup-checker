@@ -8,6 +8,7 @@ import io
 import atexit
 import datetime
 import tempfile
+import threading
 from PIL import Image
 from flask import Flask, request, jsonify
 from flask_cors import CORS
@@ -38,6 +39,7 @@ client = genai.Client(api_key=api_key)
 #  CONTEXT CACHE MANAGEMENT
 # ─────────────────────────────────────────────────────────────────────────────
 _cached_content = None  # Module-level reference to the active cache
+_is_rebuilding_cache = False  # Lock to prevent concurrent background rebuilds
 
 
 def create_rule_cache():
@@ -124,7 +126,7 @@ def generate_with_cache(contents: list) -> str:
     Generate content using the cached context if available.
     Falls back to sending rules inline if cache is not available.
     """
-    global _cached_content
+    global _cached_content, _is_rebuilding_cache
     cache_name = get_model()
 
     response = None
@@ -135,22 +137,25 @@ def generate_with_cache(contents: list) -> str:
                 model=GEMINI_MODEL,
                 contents=contents,
                 config=types.GenerateContentConfig(
-                    cached_content=cache_name
+                    cached_content=cache_name,
+                    response_mime_type="application/json"
                 )
             )
         except Exception as e:
             if "CachedContent not found" in str(e) or "403" in str(e) or "PERMISSION_DENIED" in str(e):
-                print(f"⚠️  Cache error detected: {e}. Recreating cache and retrying...")
-                create_rule_cache()
-                cache_name = get_model()
-                if cache_name:
-                    response = client.models.generate_content(
-                        model=GEMINI_MODEL,
-                        contents=contents,
-                        config=types.GenerateContentConfig(
-                            cached_content=cache_name
-                        )
-                    )
+                print(f"⚠️  Cache error detected (likely expired): {e}")
+                print("🔄  Falling back to inline rules...")
+                _cached_content = None  # Clear invalid cache
+                
+                if not _is_rebuilding_cache:
+                    _is_rebuilding_cache = True
+                    def rebuild():
+                        global _is_rebuilding_cache
+                        try:
+                            create_rule_cache()
+                        finally:
+                            _is_rebuilding_cache = False
+                    threading.Thread(target=rebuild, daemon=True).start()
             else:
                 raise e
 
@@ -160,7 +165,10 @@ def generate_with_cache(contents: list) -> str:
         full_contents = [compiled_rules] + contents
         response = client.models.generate_content(
             model=GEMINI_MODEL,
-            contents=full_contents
+            contents=full_contents,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json"
+            )
         )
 
     # Log cache usage stats
@@ -214,6 +222,7 @@ def generate_with_cache(contents: list) -> str:
                 config=types.GenerateContentConfig(
                     cached_content=cache_name,
                     safety_settings=relaxed_safety,
+                    response_mime_type="application/json"
                 )
             )
         else:
@@ -224,6 +233,7 @@ def generate_with_cache(contents: list) -> str:
                 contents=full_contents,
                 config=types.GenerateContentConfig(
                     safety_settings=relaxed_safety,
+                    response_mime_type="application/json"
                 )
             )
 
