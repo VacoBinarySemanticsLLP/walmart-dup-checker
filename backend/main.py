@@ -176,19 +176,66 @@ def generate_with_cache(contents: list) -> str:
 
     # Safely extract text — response.text raises ValueError when Gemini blocks
     # the response (safety filter, recitation, etc.), which shows as Output: 0.
-    try:
-        text = response.text
-        return text
-    except ValueError:
-        # Inspect finish reason for a useful log message
-        finish_reason = "UNKNOWN"
+    def _safe_text(resp):
         try:
-            finish_reason = response.candidates[0].finish_reason.name
-        except Exception:
-            pass
-        print(f"  ⚠️  Gemini returned no text. Finish reason: {finish_reason}")
-        print(f"  ℹ️  This is usually a safety filter block (SAFETY/RECITATION) or a MAX_TOKENS cutoff.")
-        return None
+            return resp.text
+        except (ValueError, Exception):
+            return None
+
+    text = _safe_text(response)
+    if text is not None:
+        return text
+
+    # ── Retry with relaxed safety settings ───────────────────────────────────
+    # Gemini RECITATION / SAFETY blocks fire when products have identical titles
+    # or when content resembles training data. Retrying with BLOCK_NONE bypasses
+    # the filter for product comparison tasks which are never harmful.
+    finish_reason = "UNKNOWN"
+    try:
+        finish_reason = response.candidates[0].finish_reason.name
+    except Exception:
+        pass
+    print(f"  ⚠️  Gemini blocked response (finish_reason={finish_reason}). Retrying with relaxed safety settings...")
+
+    relaxed_safety = [
+        types.SafetySetting(category="HARM_CATEGORY_HARASSMENT",        threshold="BLOCK_NONE"),
+        types.SafetySetting(category="HARM_CATEGORY_HATE_SPEECH",       threshold="BLOCK_NONE"),
+        types.SafetySetting(category="HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold="BLOCK_NONE"),
+        types.SafetySetting(category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="BLOCK_NONE"),
+        types.SafetySetting(category="HARM_CATEGORY_CIVIC_INTEGRITY",   threshold="BLOCK_NONE"),
+    ]
+
+    cache_name = get_model()
+    try:
+        if cache_name:
+            retry_response = client.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=contents,
+                config=types.GenerateContentConfig(
+                    cached_content=cache_name,
+                    safety_settings=relaxed_safety,
+                )
+            )
+        else:
+            compiled_rules = compile_rules()
+            full_contents = [compiled_rules] + contents
+            retry_response = client.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=full_contents,
+                config=types.GenerateContentConfig(
+                    safety_settings=relaxed_safety,
+                )
+            )
+
+        retry_text = _safe_text(retry_response)
+        if retry_text:
+            print(f"  ✅ Retry with relaxed safety succeeded.")
+            return retry_text
+    except Exception as retry_err:
+        print(f"  ❌ Retry also failed: {retry_err}")
+
+    print(f"  ❌ Gemini returned no text even after retry. Finish reason was: {finish_reason}")
+    return None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
