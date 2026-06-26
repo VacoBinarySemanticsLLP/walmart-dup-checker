@@ -23,6 +23,9 @@ COPY main.py .
 COPY rule_compiler.py .
 COPY rules.json .
 
+# Give the non-root user write access so it can save the AI response cache
+RUN chown -R dupcheck:dupcheck /app
+
 # Runtime optimizations
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
