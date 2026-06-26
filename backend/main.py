@@ -7,6 +7,7 @@ import hashlib
 import io
 import atexit
 import datetime
+import tempfile
 from PIL import Image
 from flask import Flask, request, jsonify
 from flask_cors import CORS
@@ -173,7 +174,21 @@ def generate_with_cache(contents: list) -> str:
             savings_pct = (cached_tokens / total_input * 100) if total_input > 0 else 0
             print(f"  💰 Cache hit: {savings_pct:.1f}% of input tokens served from cache")
 
-    return response.text
+    # Safely extract text — response.text raises ValueError when Gemini blocks
+    # the response (safety filter, recitation, etc.), which shows as Output: 0.
+    try:
+        text = response.text
+        return text
+    except ValueError:
+        # Inspect finish reason for a useful log message
+        finish_reason = "UNKNOWN"
+        try:
+            finish_reason = response.candidates[0].finish_reason.name
+        except Exception:
+            pass
+        print(f"  ⚠️  Gemini returned no text. Finish reason: {finish_reason}")
+        print(f"  ℹ️  This is usually a safety filter block (SAFETY/RECITATION) or a MAX_TOKENS cutoff.")
+        return None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
