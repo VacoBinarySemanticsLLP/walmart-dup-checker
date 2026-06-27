@@ -26,19 +26,25 @@ window.analyzeProductWithGemini = async function(product) {
       imageUrls: imageUrls
     };
 
-    const response = await fetch('https://dupcheck.duckdns.org/api/analyze-column', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(payload)
+    const result = await new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage({
+        action: 'fetch_backend',
+        url: 'http://127.0.0.1:8080/api/analyze-column',
+        options: {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        }
+      }, (res) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+        } else if (res && res.status === 'success') {
+          resolve(res.data);
+        } else {
+          reject(new Error(res ? res.message : 'Unknown error'));
+        }
+      });
     });
-
-    if (!response.ok) {
-      throw new Error(`Backend responded with status ${response.status}`);
-    }
-
-    const result = await response.json();
     console.log('🤖 DupCheck AI: Received response from backend:', result);
     
     if (result.status === 'success') {
@@ -116,17 +122,25 @@ window.analyzeBatchWithGemini = async function(products, forceRefresh = false) {
     
     console.log(`🤖 DupCheck AI: Sending batch request to backend (Force Refresh: ${forceRefresh}):`, payload);
 
-    const response = await fetch('https://dupcheck.duckdns.org/api/analyze-batch', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: payloadStr
+    const result = await new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage({
+        action: 'fetch_backend',
+        url: 'http://127.0.0.1:8080/api/analyze-batch',
+        options: {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: payloadStr
+        }
+      }, (res) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+        } else if (res && res.status === 'success') {
+          resolve(res.data);
+        } else {
+          reject(new Error(res ? res.message : 'Unknown error'));
+        }
+      });
     });
-
-    if (!response.ok) {
-      throw new Error(`Backend responded with status ${response.status}`);
-    }
-
-    const result = await response.json();
     console.log('🤖 DupCheck AI: Received batch response:', result);
     
     if (result.status === 'success') {

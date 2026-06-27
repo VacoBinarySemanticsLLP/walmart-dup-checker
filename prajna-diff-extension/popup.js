@@ -13,7 +13,7 @@ document.getElementById('activateBtn').addEventListener('click', async () => {
   }
 
   try {
-    await chrome.scripting.executeScript({ target:{tabId:tab.id}, files:['api-client.js', 'content.js'], world: 'MAIN' });
+    await chrome.scripting.executeScript({ target:{tabId:tab.id}, files:['api-client.js', 'content.js'] });
   } catch(e) {
     statusEl.textContent = 'Inject error: ' + e.message;
     statusEl.className = 'status err';
@@ -25,7 +25,6 @@ document.getElementById('activateBtn').addEventListener('click', async () => {
   try {
     var results = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
-      world: 'MAIN',
       func: function() {
         if (typeof window.__prajnaShow === 'function') {
           window.__prajnaShow();

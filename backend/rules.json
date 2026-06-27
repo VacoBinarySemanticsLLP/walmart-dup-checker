@@ -6876,5 +6876,1137 @@
         }
       }
     ]
+  },
+  {
+    "page_number": 1001,
+    "category": "Toys & Games",
+    "product_type": "Toy / Game",
+    "sop_title": "Deduplication | Toys & Games | Core Attributes",
+    "matching_context": {
+      "attributes_under_test": [
+        "Set / Count",
+        "Design / Pattern",
+        "No. of pieces",
+        "Image",
+        "Size / Dimensions",
+        "Material"
+      ],
+      "ignore_attributes_for_matching": []
+    },
+    "scenarios": [
+      {
+        "scenario_id": "SOP-PAGE-1001-S1",
+        "description": "Evaluate Toys & Games listings based on key product attributes.",
+        "conditions": {
+          "attribute_state": "mismatch",
+          "textual_evidence": "A discrepancy is found in any of the core attributes: Set / Count, Design / Pattern, No. of pieces, Size / Dimensions, Material.",
+          "visual_evidence_required": true,
+          "visual_evidence_description": "Verify via product images that the items differ visually in model, shape, design, or specs."
+        },
+        "resolution": {
+          "decision": "Not a Duplicate - Variant",
+          "actionable_instruction": "If any core attribute (e.g. Set / Count) differs, classify as 'Not a Duplicate - Variant' (or 'Not a Duplicate' if completely different product families). If all core attributes match and images show identical items, ignore minor packaging/logistics discrepancies and mark as 'Duplicate'."
+        }
+      }
+    ]
+  },
+  {
+    "page_number": 1002,
+    "category": "TV",
+    "product_type": "Television",
+    "sop_title": "Deduplication | TV | Core Attributes",
+    "matching_context": {
+      "attributes_under_test": [
+        "Screen size",
+        "Display resolution",
+        "Display technology",
+        "HDMI connections",
+        "Model",
+        "Streaming compatibility",
+        "Image",
+        "Ports (USB / Type-C)"
+      ],
+      "ignore_attributes_for_matching": []
+    },
+    "scenarios": [
+      {
+        "scenario_id": "SOP-PAGE-1002-S1",
+        "description": "Evaluate TV listings based on key product attributes.",
+        "conditions": {
+          "attribute_state": "mismatch",
+          "textual_evidence": "A discrepancy is found in any of the core attributes: Screen size, Display resolution, Display technology, HDMI connections, Model, Streaming compatibility, Ports (USB / Type-C).",
+          "visual_evidence_required": true,
+          "visual_evidence_description": "Verify via product images that the items differ visually in model, shape, design, or specs."
+        },
+        "resolution": {
+          "decision": "Not a Duplicate - Variant",
+          "actionable_instruction": "If any core attribute (e.g. Screen size) differs, classify as 'Not a Duplicate - Variant' (or 'Not a Duplicate' if completely different product families). If all core attributes match and images show identical items, ignore minor packaging/logistics discrepancies and mark as 'Duplicate'."
+        }
+      }
+    ]
+  },
+  {
+    "page_number": 1003,
+    "category": "Tyres",
+    "product_type": "Tyre",
+    "sop_title": "Deduplication | Tyres | Core Attributes",
+    "matching_context": {
+      "attributes_under_test": [
+        "Grip Size",
+        "Wheel Design",
+        "Rim Diameter",
+        "Model Number",
+        "Size",
+        "PSI (Pressure)",
+        "Warranty",
+        "Tyre speed"
+      ],
+      "ignore_attributes_for_matching": []
+    },
+    "scenarios": [
+      {
+        "scenario_id": "SOP-PAGE-1003-S1",
+        "description": "Evaluate Tyres listings based on key product attributes.",
+        "conditions": {
+          "attribute_state": "mismatch",
+          "textual_evidence": "A discrepancy is found in any of the core attributes: Grip Size, Wheel Design, Rim Diameter, Model Number, Size, PSI (Pressure), Warranty, Tyre speed.",
+          "visual_evidence_required": true,
+          "visual_evidence_description": "Verify via product images that the items differ visually in model, shape, design, or specs."
+        },
+        "resolution": {
+          "decision": "Not a Duplicate - Variant",
+          "actionable_instruction": "If any core attribute (e.g. Grip Size) differs, classify as 'Not a Duplicate - Variant' (or 'Not a Duplicate' if completely different product families). If all core attributes match and images show identical items, ignore minor packaging/logistics discrepancies and mark as 'Duplicate'."
+        }
+      }
+    ]
+  },
+  {
+    "page_number": 1004,
+    "category": "Cell Phones",
+    "product_type": "Cell Phone",
+    "sop_title": "Deduplication | Cell Phones | Core Attributes",
+    "matching_context": {
+      "attributes_under_test": [
+        "Version (locked / unlocked)",
+        "Model",
+        "Capacity",
+        "Cell phone type",
+        "Camera resolution",
+        "Image",
+        "Color"
+      ],
+      "ignore_attributes_for_matching": []
+    },
+    "scenarios": [
+      {
+        "scenario_id": "SOP-PAGE-1004-S1",
+        "description": "Evaluate Cell Phones listings based on key product attributes.",
+        "conditions": {
+          "attribute_state": "mismatch",
+          "textual_evidence": "A discrepancy is found in any of the core attributes: Version (locked / unlocked), Model, Capacity, Cell phone type, Camera resolution, Color.",
+          "visual_evidence_required": true,
+          "visual_evidence_description": "Verify via product images that the items differ visually in model, shape, design, or specs."
+        },
+        "resolution": {
+          "decision": "Not a Duplicate - Variant",
+          "actionable_instruction": "If any core attribute (e.g. Version (locked / unlocked)) differs, classify as 'Not a Duplicate - Variant' (or 'Not a Duplicate' if completely different product families). If all core attributes match and images show identical items, ignore minor packaging/logistics discrepancies and mark as 'Duplicate'."
+        }
+      }
+    ]
+  },
+  {
+    "page_number": 1005,
+    "category": "Clothing, Shoes & Accessories",
+    "product_type": "Apparel Accessory",
+    "sop_title": "Deduplication | Clothing, Shoes & Accessories | Core Attributes",
+    "matching_context": {
+      "attributes_under_test": [
+        "Size",
+        "Set / Count",
+        "Material",
+        "Design / Pattern",
+        "Color",
+        "Image",
+        "Age group",
+        "Size Type (Petite / Regular / Plus)"
+      ],
+      "ignore_attributes_for_matching": []
+    },
+    "scenarios": [
+      {
+        "scenario_id": "SOP-PAGE-1005-S1",
+        "description": "Evaluate Clothing, Shoes & Accessories listings based on key product attributes.",
+        "conditions": {
+          "attribute_state": "mismatch",
+          "textual_evidence": "A discrepancy is found in any of the core attributes: Size, Set / Count, Material, Design / Pattern, Color, Age group, Size Type (Petite / Regular / Plus).",
+          "visual_evidence_required": true,
+          "visual_evidence_description": "Verify via product images that the items differ visually in model, shape, design, or specs."
+        },
+        "resolution": {
+          "decision": "Not a Duplicate - Variant",
+          "actionable_instruction": "If any core attribute (e.g. Size) differs, classify as 'Not a Duplicate - Variant' (or 'Not a Duplicate' if completely different product families). If all core attributes match and images show identical items, ignore minor packaging/logistics discrepancies and mark as 'Duplicate'."
+        }
+      }
+    ]
+  },
+  {
+    "page_number": 1006,
+    "category": "Grills",
+    "product_type": "Grill",
+    "sop_title": "Deduplication | Grills | Core Attributes",
+    "matching_context": {
+      "attributes_under_test": [
+        "BTU",
+        "Type",
+        "Color",
+        "Dimensions",
+        "Material"
+      ],
+      "ignore_attributes_for_matching": []
+    },
+    "scenarios": [
+      {
+        "scenario_id": "SOP-PAGE-1006-S1",
+        "description": "Evaluate Grills listings based on key product attributes.",
+        "conditions": {
+          "attribute_state": "mismatch",
+          "textual_evidence": "A discrepancy is found in any of the core attributes: BTU, Type, Color, Dimensions, Material.",
+          "visual_evidence_required": true,
+          "visual_evidence_description": "Verify via product images that the items differ visually in model, shape, design, or specs."
+        },
+        "resolution": {
+          "decision": "Not a Duplicate - Variant",
+          "actionable_instruction": "If any core attribute (e.g. BTU) differs, classify as 'Not a Duplicate - Variant' (or 'Not a Duplicate' if completely different product families). If all core attributes match and images show identical items, ignore minor packaging/logistics discrepancies and mark as 'Duplicate'."
+        }
+      }
+    ]
+  },
+  {
+    "page_number": 1007,
+    "category": "Home & Bedding",
+    "product_type": "Bedding",
+    "sop_title": "Deduplication | Home & Bedding | Core Attributes",
+    "matching_context": {
+      "attributes_under_test": [
+        "Size / Dimensions",
+        "Color",
+        "Count / Pack",
+        "Pattern",
+        "Material"
+      ],
+      "ignore_attributes_for_matching": []
+    },
+    "scenarios": [
+      {
+        "scenario_id": "SOP-PAGE-1007-S1",
+        "description": "Evaluate Home & Bedding listings based on key product attributes.",
+        "conditions": {
+          "attribute_state": "mismatch",
+          "textual_evidence": "A discrepancy is found in any of the core attributes: Size / Dimensions, Color, Count / Pack, Pattern, Material.",
+          "visual_evidence_required": true,
+          "visual_evidence_description": "Verify via product images that the items differ visually in model, shape, design, or specs."
+        },
+        "resolution": {
+          "decision": "Not a Duplicate - Variant",
+          "actionable_instruction": "If any core attribute (e.g. Size / Dimensions) differs, classify as 'Not a Duplicate - Variant' (or 'Not a Duplicate' if completely different product families). If all core attributes match and images show identical items, ignore minor packaging/logistics discrepancies and mark as 'Duplicate'."
+        }
+      }
+    ]
+  },
+  {
+    "page_number": 1008,
+    "category": "Home & Furniture",
+    "product_type": "Furniture",
+    "sop_title": "Deduplication | Home & Furniture | Core Attributes",
+    "matching_context": {
+      "attributes_under_test": [
+        "Dimensions",
+        "Finish",
+        "Count / Set",
+        "Image",
+        "Material",
+        "Color"
+      ],
+      "ignore_attributes_for_matching": []
+    },
+    "scenarios": [
+      {
+        "scenario_id": "SOP-PAGE-1008-S1",
+        "description": "Evaluate Home & Furniture listings based on key product attributes.",
+        "conditions": {
+          "attribute_state": "mismatch",
+          "textual_evidence": "A discrepancy is found in any of the core attributes: Dimensions, Finish, Count / Set, Material, Color.",
+          "visual_evidence_required": true,
+          "visual_evidence_description": "Verify via product images that the items differ visually in model, shape, design, or specs."
+        },
+        "resolution": {
+          "decision": "Not a Duplicate - Variant",
+          "actionable_instruction": "If any core attribute (e.g. Dimensions) differs, classify as 'Not a Duplicate - Variant' (or 'Not a Duplicate' if completely different product families). If all core attributes match and images show identical items, ignore minor packaging/logistics discrepancies and mark as 'Duplicate'."
+        }
+      }
+    ]
+  },
+  {
+    "page_number": 1009,
+    "category": "Jewelry",
+    "product_type": "Jewelry",
+    "sop_title": "Deduplication | Jewelry | Core Attributes",
+    "matching_context": {
+      "attributes_under_test": [
+        "Weight",
+        "Finish / Metal type",
+        "No. of stones & type of stones",
+        "Length / Size / Weight",
+        "Quality & Color",
+        "Image",
+        "Clarity / Cut",
+        "Carat weight"
+      ],
+      "ignore_attributes_for_matching": []
+    },
+    "scenarios": [
+      {
+        "scenario_id": "SOP-PAGE-1009-S1",
+        "description": "Evaluate Jewelry listings based on key product attributes.",
+        "conditions": {
+          "attribute_state": "mismatch",
+          "textual_evidence": "A discrepancy is found in any of the core attributes: Weight, Finish / Metal type, No. of stones & type of stones, Length / Size / Weight, Quality & Color, Clarity / Cut, Carat weight.",
+          "visual_evidence_required": true,
+          "visual_evidence_description": "Verify via product images that the items differ visually in model, shape, design, or specs."
+        },
+        "resolution": {
+          "decision": "Not a Duplicate - Variant",
+          "actionable_instruction": "If any core attribute (e.g. Weight) differs, classify as 'Not a Duplicate - Variant' (or 'Not a Duplicate' if completely different product families). If all core attributes match and images show identical items, ignore minor packaging/logistics discrepancies and mark as 'Duplicate'."
+        }
+      }
+    ]
+  },
+  {
+    "page_number": 1010,
+    "category": "Arts Crafts & Sewing",
+    "product_type": "Craft Supply",
+    "sop_title": "Deduplication | Arts Crafts & Sewing | Core Attributes",
+    "matching_context": {
+      "attributes_under_test": [
+        "Image",
+        "Color",
+        "Pattern",
+        "Set / Count",
+        "Age group"
+      ],
+      "ignore_attributes_for_matching": []
+    },
+    "scenarios": [
+      {
+        "scenario_id": "SOP-PAGE-1010-S1",
+        "description": "Evaluate Arts Crafts & Sewing listings based on key product attributes.",
+        "conditions": {
+          "attribute_state": "mismatch",
+          "textual_evidence": "A discrepancy is found in any of the core attributes: Color, Pattern, Set / Count, Age group.",
+          "visual_evidence_required": true,
+          "visual_evidence_description": "Verify via product images that the items differ visually in model, shape, design, or specs."
+        },
+        "resolution": {
+          "decision": "Not a Duplicate - Variant",
+          "actionable_instruction": "If any core attribute (e.g. Color) differs, classify as 'Not a Duplicate - Variant' (or 'Not a Duplicate' if completely different product families). If all core attributes match and images show identical items, ignore minor packaging/logistics discrepancies and mark as 'Duplicate'."
+        }
+      }
+    ]
+  },
+  {
+    "page_number": 1011,
+    "category": "Automotive tools & parts",
+    "product_type": "Auto Part / Tool",
+    "sop_title": "Deduplication | Automotive tools & parts | Core Attributes",
+    "matching_context": {
+      "attributes_under_test": [
+        "Image",
+        "Model no.",
+        "Color",
+        "Compatibility"
+      ],
+      "ignore_attributes_for_matching": []
+    },
+    "scenarios": [
+      {
+        "scenario_id": "SOP-PAGE-1011-S1",
+        "description": "Evaluate Automotive tools & parts listings based on key product attributes.",
+        "conditions": {
+          "attribute_state": "mismatch",
+          "textual_evidence": "A discrepancy is found in any of the core attributes: Model no., Color, Compatibility.",
+          "visual_evidence_required": true,
+          "visual_evidence_description": "Verify via product images that the items differ visually in model, shape, design, or specs."
+        },
+        "resolution": {
+          "decision": "Not a Duplicate - Variant",
+          "actionable_instruction": "If any core attribute (e.g. Model no.) differs, classify as 'Not a Duplicate - Variant' (or 'Not a Duplicate' if completely different product families). If all core attributes match and images show identical items, ignore minor packaging/logistics discrepancies and mark as 'Duplicate'."
+        }
+      }
+    ]
+  },
+  {
+    "page_number": 1012,
+    "category": "Books",
+    "product_type": "Book",
+    "sop_title": "Deduplication | Books | Core Attributes",
+    "matching_context": {
+      "attributes_under_test": [
+        "Page Number",
+        "Image",
+        "Volume",
+        "Format",
+        "Edition"
+      ],
+      "ignore_attributes_for_matching": []
+    },
+    "scenarios": [
+      {
+        "scenario_id": "SOP-PAGE-1012-S1",
+        "description": "Evaluate Books listings based on key product attributes.",
+        "conditions": {
+          "attribute_state": "mismatch",
+          "textual_evidence": "A discrepancy is found in any of the core attributes: Page Number, Volume, Format, Edition.",
+          "visual_evidence_required": true,
+          "visual_evidence_description": "Verify via product images that the items differ visually in model, shape, design, or specs."
+        },
+        "resolution": {
+          "decision": "Not a Duplicate - Variant",
+          "actionable_instruction": "If any core attribute (e.g. Page Number) differs, classify as 'Not a Duplicate - Variant' (or 'Not a Duplicate' if completely different product families). If all core attributes match and images show identical items, ignore minor packaging/logistics discrepancies and mark as 'Duplicate'."
+        }
+      }
+    ]
+  },
+  {
+    "page_number": 1013,
+    "category": "Electronics & Accessories",
+    "product_type": "Electronic Accessory",
+    "sop_title": "Deduplication | Electronics & Accessories | Core Attributes",
+    "matching_context": {
+      "attributes_under_test": [
+        "Image",
+        "Color",
+        "Pattern / Design",
+        "Model no. / Make no.",
+        "Compatibility",
+        "Capacity (BTU / KWH / etc.)"
+      ],
+      "ignore_attributes_for_matching": []
+    },
+    "scenarios": [
+      {
+        "scenario_id": "SOP-PAGE-1013-S1",
+        "description": "Evaluate Electronics & Accessories listings based on key product attributes.",
+        "conditions": {
+          "attribute_state": "mismatch",
+          "textual_evidence": "A discrepancy is found in any of the core attributes: Color, Pattern / Design, Model no. / Make no., Compatibility, Capacity (BTU / KWH / etc.).",
+          "visual_evidence_required": true,
+          "visual_evidence_description": "Verify via product images that the items differ visually in model, shape, design, or specs."
+        },
+        "resolution": {
+          "decision": "Not a Duplicate - Variant",
+          "actionable_instruction": "If any core attribute (e.g. Color) differs, classify as 'Not a Duplicate - Variant' (or 'Not a Duplicate' if completely different product families). If all core attributes match and images show identical items, ignore minor packaging/logistics discrepancies and mark as 'Duplicate'."
+        }
+      }
+    ]
+  },
+  {
+    "page_number": 1014,
+    "category": "Food & Beverage",
+    "product_type": "Food / Beverage Item",
+    "sop_title": "Deduplication | Food & Beverage | Core Attributes",
+    "matching_context": {
+      "attributes_under_test": [
+        "Size / Quantity / Pack",
+        "Flavour",
+        "Image"
+      ],
+      "ignore_attributes_for_matching": []
+    },
+    "scenarios": [
+      {
+        "scenario_id": "SOP-PAGE-1014-S1",
+        "description": "Evaluate Food & Beverage listings based on key product attributes.",
+        "conditions": {
+          "attribute_state": "mismatch",
+          "textual_evidence": "A discrepancy is found in any of the core attributes: Size / Quantity / Pack, Flavour.",
+          "visual_evidence_required": true,
+          "visual_evidence_description": "Verify via product images that the items differ visually in model, shape, design, or specs."
+        },
+        "resolution": {
+          "decision": "Not a Duplicate - Variant",
+          "actionable_instruction": "If any core attribute (e.g. Size / Quantity / Pack) differs, classify as 'Not a Duplicate - Variant' (or 'Not a Duplicate' if completely different product families). If all core attributes match and images show identical items, ignore minor packaging/logistics discrepancies and mark as 'Duplicate'."
+        }
+      }
+    ]
+  },
+  {
+    "page_number": 1015,
+    "category": "Grocery & Snacks",
+    "product_type": "Grocery Item",
+    "sop_title": "Deduplication | Grocery & Snacks | Core Attributes",
+    "matching_context": {
+      "attributes_under_test": [
+        "Image",
+        "Size / Quantity / Pack",
+        "Flavour",
+        "Type (Frozen / Fresh, etc)"
+      ],
+      "ignore_attributes_for_matching": []
+    },
+    "scenarios": [
+      {
+        "scenario_id": "SOP-PAGE-1015-S1",
+        "description": "Evaluate Grocery & Snacks listings based on key product attributes.",
+        "conditions": {
+          "attribute_state": "mismatch",
+          "textual_evidence": "A discrepancy is found in any of the core attributes: Size / Quantity / Pack, Flavour, Type (Frozen / Fresh, etc).",
+          "visual_evidence_required": true,
+          "visual_evidence_description": "Verify via product images that the items differ visually in model, shape, design, or specs."
+        },
+        "resolution": {
+          "decision": "Not a Duplicate - Variant",
+          "actionable_instruction": "If any core attribute (e.g. Size / Quantity / Pack) differs, classify as 'Not a Duplicate - Variant' (or 'Not a Duplicate' if completely different product families). If all core attributes match and images show identical items, ignore minor packaging/logistics discrepancies and mark as 'Duplicate'."
+        }
+      }
+    ]
+  },
+  {
+    "page_number": 1016,
+    "category": "Home & Appliances",
+    "product_type": "Appliance",
+    "sop_title": "Deduplication | Home & Appliances | Core Attributes",
+    "matching_context": {
+      "attributes_under_test": [
+        "Image",
+        "Color",
+        "Model no.",
+        "Pack / Bundle",
+        "Capacity (BTU / KWH / etc.)"
+      ],
+      "ignore_attributes_for_matching": []
+    },
+    "scenarios": [
+      {
+        "scenario_id": "SOP-PAGE-1016-S1",
+        "description": "Evaluate Home & Appliances listings based on key product attributes.",
+        "conditions": {
+          "attribute_state": "mismatch",
+          "textual_evidence": "A discrepancy is found in any of the core attributes: Color, Model no., Pack / Bundle, Capacity (BTU / KWH / etc.).",
+          "visual_evidence_required": true,
+          "visual_evidence_description": "Verify via product images that the items differ visually in model, shape, design, or specs."
+        },
+        "resolution": {
+          "decision": "Not a Duplicate - Variant",
+          "actionable_instruction": "If any core attribute (e.g. Color) differs, classify as 'Not a Duplicate - Variant' (or 'Not a Duplicate' if completely different product families). If all core attributes match and images show identical items, ignore minor packaging/logistics discrepancies and mark as 'Duplicate'."
+        }
+      }
+    ]
+  },
+  {
+    "page_number": 1017,
+    "category": "Home & Decor",
+    "product_type": "Home Decor",
+    "sop_title": "Deduplication | Home & Decor | Core Attributes",
+    "matching_context": {
+      "attributes_under_test": [
+        "Image",
+        "Pattern / Design",
+        "Color",
+        "Size / Dimensions",
+        "Count / Set"
+      ],
+      "ignore_attributes_for_matching": []
+    },
+    "scenarios": [
+      {
+        "scenario_id": "SOP-PAGE-1017-S1",
+        "description": "Evaluate Home & Decor listings based on key product attributes.",
+        "conditions": {
+          "attribute_state": "mismatch",
+          "textual_evidence": "A discrepancy is found in any of the core attributes: Pattern / Design, Color, Size / Dimensions, Count / Set.",
+          "visual_evidence_required": true,
+          "visual_evidence_description": "Verify via product images that the items differ visually in model, shape, design, or specs."
+        },
+        "resolution": {
+          "decision": "Not a Duplicate - Variant",
+          "actionable_instruction": "If any core attribute (e.g. Pattern / Design) differs, classify as 'Not a Duplicate - Variant' (or 'Not a Duplicate' if completely different product families). If all core attributes match and images show identical items, ignore minor packaging/logistics discrepancies and mark as 'Duplicate'."
+        }
+      }
+    ]
+  },
+  {
+    "page_number": 1018,
+    "category": "Home & Kitchen",
+    "product_type": "Kitchenware",
+    "sop_title": "Deduplication | Home & Kitchen | Core Attributes",
+    "matching_context": {
+      "attributes_under_test": [
+        "Image",
+        "Color",
+        "Model no.",
+        "Dimensions / Size",
+        "Count / Pack",
+        "Material"
+      ],
+      "ignore_attributes_for_matching": []
+    },
+    "scenarios": [
+      {
+        "scenario_id": "SOP-PAGE-1018-S1",
+        "description": "Evaluate Home & Kitchen listings based on key product attributes.",
+        "conditions": {
+          "attribute_state": "mismatch",
+          "textual_evidence": "A discrepancy is found in any of the core attributes: Color, Model no., Dimensions / Size, Count / Pack, Material.",
+          "visual_evidence_required": true,
+          "visual_evidence_description": "Verify via product images that the items differ visually in model, shape, design, or specs."
+        },
+        "resolution": {
+          "decision": "Not a Duplicate - Variant",
+          "actionable_instruction": "If any core attribute (e.g. Color) differs, classify as 'Not a Duplicate - Variant' (or 'Not a Duplicate' if completely different product families). If all core attributes match and images show identical items, ignore minor packaging/logistics discrepancies and mark as 'Duplicate'."
+        }
+      }
+    ]
+  },
+  {
+    "page_number": 1019,
+    "category": "Home & Luggage",
+    "product_type": "Luggage",
+    "sop_title": "Deduplication | Home & Luggage | Core Attributes",
+    "matching_context": {
+      "attributes_under_test": [
+        "Image",
+        "Size / Dimensions",
+        "Count / Pack",
+        "Color / Pattern",
+        "Material"
+      ],
+      "ignore_attributes_for_matching": []
+    },
+    "scenarios": [
+      {
+        "scenario_id": "SOP-PAGE-1019-S1",
+        "description": "Evaluate Home & Luggage listings based on key product attributes.",
+        "conditions": {
+          "attribute_state": "mismatch",
+          "textual_evidence": "A discrepancy is found in any of the core attributes: Size / Dimensions, Count / Pack, Color / Pattern, Material.",
+          "visual_evidence_required": true,
+          "visual_evidence_description": "Verify via product images that the items differ visually in model, shape, design, or specs."
+        },
+        "resolution": {
+          "decision": "Not a Duplicate - Variant",
+          "actionable_instruction": "If any core attribute (e.g. Size / Dimensions) differs, classify as 'Not a Duplicate - Variant' (or 'Not a Duplicate' if completely different product families). If all core attributes match and images show identical items, ignore minor packaging/logistics discrepancies and mark as 'Duplicate'."
+        }
+      }
+    ]
+  },
+  {
+    "page_number": 1020,
+    "category": "Home & Storage",
+    "product_type": "Storage Container",
+    "sop_title": "Deduplication | Home & Storage | Core Attributes",
+    "matching_context": {
+      "attributes_under_test": [
+        "Image",
+        "Color",
+        "Size / Dimensions",
+        "Capacity",
+        "Pattern / Design"
+      ],
+      "ignore_attributes_for_matching": []
+    },
+    "scenarios": [
+      {
+        "scenario_id": "SOP-PAGE-1020-S1",
+        "description": "Evaluate Home & Storage listings based on key product attributes.",
+        "conditions": {
+          "attribute_state": "mismatch",
+          "textual_evidence": "A discrepancy is found in any of the core attributes: Color, Size / Dimensions, Capacity, Pattern / Design.",
+          "visual_evidence_required": true,
+          "visual_evidence_description": "Verify via product images that the items differ visually in model, shape, design, or specs."
+        },
+        "resolution": {
+          "decision": "Not a Duplicate - Variant",
+          "actionable_instruction": "If any core attribute (e.g. Color) differs, classify as 'Not a Duplicate - Variant' (or 'Not a Duplicate' if completely different product families). If all core attributes match and images show identical items, ignore minor packaging/logistics discrepancies and mark as 'Duplicate'."
+        }
+      }
+    ]
+  },
+  {
+    "page_number": 1021,
+    "category": "Home Improvement",
+    "product_type": "Home Improvement Item",
+    "sop_title": "Deduplication | Home Improvement | Core Attributes",
+    "matching_context": {
+      "attributes_under_test": [
+        "Image",
+        "Part no.",
+        "Size",
+        "Count",
+        "Material"
+      ],
+      "ignore_attributes_for_matching": []
+    },
+    "scenarios": [
+      {
+        "scenario_id": "SOP-PAGE-1021-S1",
+        "description": "Evaluate Home Improvement listings based on key product attributes.",
+        "conditions": {
+          "attribute_state": "mismatch",
+          "textual_evidence": "A discrepancy is found in any of the core attributes: Part no., Size, Count, Material.",
+          "visual_evidence_required": true,
+          "visual_evidence_description": "Verify via product images that the items differ visually in model, shape, design, or specs."
+        },
+        "resolution": {
+          "decision": "Not a Duplicate - Variant",
+          "actionable_instruction": "If any core attribute (e.g. Part no.) differs, classify as 'Not a Duplicate - Variant' (or 'Not a Duplicate' if completely different product families). If all core attributes match and images show identical items, ignore minor packaging/logistics discrepancies and mark as 'Duplicate'."
+        }
+      }
+    ]
+  },
+  {
+    "page_number": 1022,
+    "category": "Household Essentials",
+    "product_type": "Household Essential",
+    "sop_title": "Deduplication | Household Essentials | Core Attributes",
+    "matching_context": {
+      "attributes_under_test": [
+        "Image",
+        "Fragrance",
+        "Count / Pack",
+        "Size / weight"
+      ],
+      "ignore_attributes_for_matching": []
+    },
+    "scenarios": [
+      {
+        "scenario_id": "SOP-PAGE-1022-S1",
+        "description": "Evaluate Household Essentials listings based on key product attributes.",
+        "conditions": {
+          "attribute_state": "mismatch",
+          "textual_evidence": "A discrepancy is found in any of the core attributes: Fragrance, Count / Pack, Size / weight.",
+          "visual_evidence_required": true,
+          "visual_evidence_description": "Verify via product images that the items differ visually in model, shape, design, or specs."
+        },
+        "resolution": {
+          "decision": "Not a Duplicate - Variant",
+          "actionable_instruction": "If any core attribute (e.g. Fragrance) differs, classify as 'Not a Duplicate - Variant' (or 'Not a Duplicate' if completely different product families). If all core attributes match and images show identical items, ignore minor packaging/logistics discrepancies and mark as 'Duplicate'."
+        }
+      }
+    ]
+  },
+  {
+    "page_number": 1023,
+    "category": "Medical Supplies",
+    "product_type": "Medical Supply",
+    "sop_title": "Deduplication | Medical Supplies | Core Attributes",
+    "matching_context": {
+      "attributes_under_test": [
+        "Image",
+        "Capacity / Volume",
+        "Material",
+        "Count / Pack"
+      ],
+      "ignore_attributes_for_matching": []
+    },
+    "scenarios": [
+      {
+        "scenario_id": "SOP-PAGE-1023-S1",
+        "description": "Evaluate Medical Supplies listings based on key product attributes.",
+        "conditions": {
+          "attribute_state": "mismatch",
+          "textual_evidence": "A discrepancy is found in any of the core attributes: Capacity / Volume, Material, Count / Pack.",
+          "visual_evidence_required": true,
+          "visual_evidence_description": "Verify via product images that the items differ visually in model, shape, design, or specs."
+        },
+        "resolution": {
+          "decision": "Not a Duplicate - Variant",
+          "actionable_instruction": "If any core attribute (e.g. Capacity / Volume) differs, classify as 'Not a Duplicate - Variant' (or 'Not a Duplicate' if completely different product families). If all core attributes match and images show identical items, ignore minor packaging/logistics discrepancies and mark as 'Duplicate'."
+        }
+      }
+    ]
+  },
+  {
+    "page_number": 1024,
+    "category": "Movies & T.V Shows",
+    "product_type": "Media",
+    "sop_title": "Deduplication | Movies & T.V Shows | Core Attributes",
+    "matching_context": {
+      "attributes_under_test": [
+        "Image",
+        "Release Date",
+        "Format",
+        "Set / Single piece",
+        "Running Time"
+      ],
+      "ignore_attributes_for_matching": []
+    },
+    "scenarios": [
+      {
+        "scenario_id": "SOP-PAGE-1024-S1",
+        "description": "Evaluate Movies & T.V Shows listings based on key product attributes.",
+        "conditions": {
+          "attribute_state": "mismatch",
+          "textual_evidence": "A discrepancy is found in any of the core attributes: Release Date, Format, Set / Single piece, Running Time.",
+          "visual_evidence_required": true,
+          "visual_evidence_description": "Verify via product images that the items differ visually in model, shape, design, or specs."
+        },
+        "resolution": {
+          "decision": "Not a Duplicate - Variant",
+          "actionable_instruction": "If any core attribute (e.g. Release Date) differs, classify as 'Not a Duplicate - Variant' (or 'Not a Duplicate' if completely different product families). If all core attributes match and images show identical items, ignore minor packaging/logistics discrepancies and mark as 'Duplicate'."
+        }
+      }
+    ]
+  },
+  {
+    "page_number": 1025,
+    "category": "Music",
+    "product_type": "Audio Media",
+    "sop_title": "Deduplication | Music | Core Attributes",
+    "matching_context": {
+      "attributes_under_test": [
+        "Image",
+        "Format",
+        "Release Date",
+        "Set / Single piece"
+      ],
+      "ignore_attributes_for_matching": []
+    },
+    "scenarios": [
+      {
+        "scenario_id": "SOP-PAGE-1025-S1",
+        "description": "Evaluate Music listings based on key product attributes.",
+        "conditions": {
+          "attribute_state": "mismatch",
+          "textual_evidence": "A discrepancy is found in any of the core attributes: Format, Release Date, Set / Single piece.",
+          "visual_evidence_required": true,
+          "visual_evidence_description": "Verify via product images that the items differ visually in model, shape, design, or specs."
+        },
+        "resolution": {
+          "decision": "Not a Duplicate - Variant",
+          "actionable_instruction": "If any core attribute (e.g. Format) differs, classify as 'Not a Duplicate - Variant' (or 'Not a Duplicate' if completely different product families). If all core attributes match and images show identical items, ignore minor packaging/logistics discrepancies and mark as 'Duplicate'."
+        }
+      }
+    ]
+  },
+  {
+    "page_number": 1026,
+    "category": "Musical Instruments",
+    "product_type": "Musical Instrument",
+    "sop_title": "Deduplication | Musical Instruments | Core Attributes",
+    "matching_context": {
+      "attributes_under_test": [
+        "Image",
+        "Color",
+        "Model no.",
+        "Size",
+        "Material",
+        "Age group"
+      ],
+      "ignore_attributes_for_matching": []
+    },
+    "scenarios": [
+      {
+        "scenario_id": "SOP-PAGE-1026-S1",
+        "description": "Evaluate Musical Instruments listings based on key product attributes.",
+        "conditions": {
+          "attribute_state": "mismatch",
+          "textual_evidence": "A discrepancy is found in any of the core attributes: Color, Model no., Size, Material, Age group.",
+          "visual_evidence_required": true,
+          "visual_evidence_description": "Verify via product images that the items differ visually in model, shape, design, or specs."
+        },
+        "resolution": {
+          "decision": "Not a Duplicate - Variant",
+          "actionable_instruction": "If any core attribute (e.g. Color) differs, classify as 'Not a Duplicate - Variant' (or 'Not a Duplicate' if completely different product families). If all core attributes match and images show identical items, ignore minor packaging/logistics discrepancies and mark as 'Duplicate'."
+        }
+      }
+    ]
+  },
+  {
+    "page_number": 1027,
+    "category": "Office & School Supplies",
+    "product_type": "Office Supply",
+    "sop_title": "Deduplication | Office & School Supplies | Core Attributes",
+    "matching_context": {
+      "attributes_under_test": [
+        "Image",
+        "Color",
+        "Count / Set / Pack",
+        "Size",
+        "Material"
+      ],
+      "ignore_attributes_for_matching": []
+    },
+    "scenarios": [
+      {
+        "scenario_id": "SOP-PAGE-1027-S1",
+        "description": "Evaluate Office & School Supplies listings based on key product attributes.",
+        "conditions": {
+          "attribute_state": "mismatch",
+          "textual_evidence": "A discrepancy is found in any of the core attributes: Color, Count / Set / Pack, Size, Material.",
+          "visual_evidence_required": true,
+          "visual_evidence_description": "Verify via product images that the items differ visually in model, shape, design, or specs."
+        },
+        "resolution": {
+          "decision": "Not a Duplicate - Variant",
+          "actionable_instruction": "If any core attribute (e.g. Color) differs, classify as 'Not a Duplicate - Variant' (or 'Not a Duplicate' if completely different product families). If all core attributes match and images show identical items, ignore minor packaging/logistics discrepancies and mark as 'Duplicate'."
+        }
+      }
+    ]
+  },
+  {
+    "page_number": 1028,
+    "category": "Party & Occasions",
+    "product_type": "Party Supply",
+    "sop_title": "Deduplication | Party & Occasions | Core Attributes",
+    "matching_context": {
+      "attributes_under_test": [
+        "Image",
+        "Color",
+        "Size / Age",
+        "Design / Pattern",
+        "Count",
+        "Theme"
+      ],
+      "ignore_attributes_for_matching": []
+    },
+    "scenarios": [
+      {
+        "scenario_id": "SOP-PAGE-1028-S1",
+        "description": "Evaluate Party & Occasions listings based on key product attributes.",
+        "conditions": {
+          "attribute_state": "mismatch",
+          "textual_evidence": "A discrepancy is found in any of the core attributes: Color, Size / Age, Design / Pattern, Count, Theme.",
+          "visual_evidence_required": true,
+          "visual_evidence_description": "Verify via product images that the items differ visually in model, shape, design, or specs."
+        },
+        "resolution": {
+          "decision": "Not a Duplicate - Variant",
+          "actionable_instruction": "If any core attribute (e.g. Color) differs, classify as 'Not a Duplicate - Variant' (or 'Not a Duplicate' if completely different product families). If all core attributes match and images show identical items, ignore minor packaging/logistics discrepancies and mark as 'Duplicate'."
+        }
+      }
+    ]
+  },
+  {
+    "page_number": 1029,
+    "category": "Patio & Garden",
+    "product_type": "Garden Item",
+    "sop_title": "Deduplication | Patio & Garden | Core Attributes",
+    "matching_context": {
+      "attributes_under_test": [
+        "Image",
+        "Size / Capacity",
+        "Count / Pack",
+        "Color",
+        "Dimensions"
+      ],
+      "ignore_attributes_for_matching": []
+    },
+    "scenarios": [
+      {
+        "scenario_id": "SOP-PAGE-1029-S1",
+        "description": "Evaluate Patio & Garden listings based on key product attributes.",
+        "conditions": {
+          "attribute_state": "mismatch",
+          "textual_evidence": "A discrepancy is found in any of the core attributes: Size / Capacity, Count / Pack, Color, Dimensions.",
+          "visual_evidence_required": true,
+          "visual_evidence_description": "Verify via product images that the items differ visually in model, shape, design, or specs."
+        },
+        "resolution": {
+          "decision": "Not a Duplicate - Variant",
+          "actionable_instruction": "If any core attribute (e.g. Size / Capacity) differs, classify as 'Not a Duplicate - Variant' (or 'Not a Duplicate' if completely different product families). If all core attributes match and images show identical items, ignore minor packaging/logistics discrepancies and mark as 'Duplicate'."
+        }
+      }
+    ]
+  },
+  {
+    "page_number": 1030,
+    "category": "Personal Care",
+    "product_type": "Personal Care Item",
+    "sop_title": "Deduplication | Personal Care | Core Attributes",
+    "matching_context": {
+      "attributes_under_test": [
+        "Image",
+        "Count / Pack",
+        "Size",
+        "Age group"
+      ],
+      "ignore_attributes_for_matching": []
+    },
+    "scenarios": [
+      {
+        "scenario_id": "SOP-PAGE-1030-S1",
+        "description": "Evaluate Personal Care listings based on key product attributes.",
+        "conditions": {
+          "attribute_state": "mismatch",
+          "textual_evidence": "A discrepancy is found in any of the core attributes: Count / Pack, Size, Age group.",
+          "visual_evidence_required": true,
+          "visual_evidence_description": "Verify via product images that the items differ visually in model, shape, design, or specs."
+        },
+        "resolution": {
+          "decision": "Not a Duplicate - Variant",
+          "actionable_instruction": "If any core attribute (e.g. Count / Pack) differs, classify as 'Not a Duplicate - Variant' (or 'Not a Duplicate' if completely different product families). If all core attributes match and images show identical items, ignore minor packaging/logistics discrepancies and mark as 'Duplicate'."
+        }
+      }
+    ]
+  },
+  {
+    "page_number": 1031,
+    "category": "Pets",
+    "product_type": "Pet Product",
+    "sop_title": "Deduplication | Pets | Core Attributes",
+    "matching_context": {
+      "attributes_under_test": [
+        "Image",
+        "Age group",
+        "Flavour",
+        "Size / Dimensions",
+        "Material"
+      ],
+      "ignore_attributes_for_matching": []
+    },
+    "scenarios": [
+      {
+        "scenario_id": "SOP-PAGE-1031-S1",
+        "description": "Evaluate Pets listings based on key product attributes.",
+        "conditions": {
+          "attribute_state": "mismatch",
+          "textual_evidence": "A discrepancy is found in any of the core attributes: Age group, Flavour, Size / Dimensions, Material.",
+          "visual_evidence_required": true,
+          "visual_evidence_description": "Verify via product images that the items differ visually in model, shape, design, or specs."
+        },
+        "resolution": {
+          "decision": "Not a Duplicate - Variant",
+          "actionable_instruction": "If any core attribute (e.g. Age group) differs, classify as 'Not a Duplicate - Variant' (or 'Not a Duplicate' if completely different product families). If all core attributes match and images show identical items, ignore minor packaging/logistics discrepancies and mark as 'Duplicate'."
+        }
+      }
+    ]
+  },
+  {
+    "page_number": 1032,
+    "category": "Sports & Outdoors",
+    "product_type": "Sporting Good",
+    "sop_title": "Deduplication | Sports & Outdoors | Core Attributes",
+    "matching_context": {
+      "attributes_under_test": [
+        "Image",
+        "Size / Dimensions / Capacity",
+        "Color",
+        "Material",
+        "Kit / Bundle"
+      ],
+      "ignore_attributes_for_matching": []
+    },
+    "scenarios": [
+      {
+        "scenario_id": "SOP-PAGE-1032-S1",
+        "description": "Evaluate Sports & Outdoors listings based on key product attributes.",
+        "conditions": {
+          "attribute_state": "mismatch",
+          "textual_evidence": "A discrepancy is found in any of the core attributes: Size / Dimensions / Capacity, Color, Material, Kit / Bundle.",
+          "visual_evidence_required": true,
+          "visual_evidence_description": "Verify via product images that the items differ visually in model, shape, design, or specs."
+        },
+        "resolution": {
+          "decision": "Not a Duplicate - Variant",
+          "actionable_instruction": "If any core attribute (e.g. Size / Dimensions / Capacity) differs, classify as 'Not a Duplicate - Variant' (or 'Not a Duplicate' if completely different product families). If all core attributes match and images show identical items, ignore minor packaging/logistics discrepancies and mark as 'Duplicate'."
+        }
+      }
+    ]
+  },
+  {
+    "page_number": 1033,
+    "category": "Beauty",
+    "product_type": "Beauty Product",
+    "sop_title": "Deduplication | Beauty | Core Attributes",
+    "matching_context": {
+      "attributes_under_test": [
+        "Image",
+        "Size",
+        "Color / Shade",
+        "Pack / Count"
+      ],
+      "ignore_attributes_for_matching": []
+    },
+    "scenarios": [
+      {
+        "scenario_id": "SOP-PAGE-1033-S1",
+        "description": "Evaluate Beauty listings based on key product attributes.",
+        "conditions": {
+          "attribute_state": "mismatch",
+          "textual_evidence": "A discrepancy is found in any of the core attributes: Size, Color / Shade, Pack / Count.",
+          "visual_evidence_required": true,
+          "visual_evidence_description": "Verify via product images that the items differ visually in model, shape, design, or specs."
+        },
+        "resolution": {
+          "decision": "Not a Duplicate - Variant",
+          "actionable_instruction": "If any core attribute (e.g. Size) differs, classify as 'Not a Duplicate - Variant' (or 'Not a Duplicate' if completely different product families). If all core attributes match and images show identical items, ignore minor packaging/logistics discrepancies and mark as 'Duplicate'."
+        }
+      }
+    ]
+  },
+  {
+    "page_number": 1034,
+    "category": "Baby Care",
+    "product_type": "Baby Care Item",
+    "sop_title": "Deduplication | Baby Care | Core Attributes",
+    "matching_context": {
+      "attributes_under_test": [
+        "Image",
+        "Size",
+        "Color",
+        "Material",
+        "Design / Pattern"
+      ],
+      "ignore_attributes_for_matching": []
+    },
+    "scenarios": [
+      {
+        "scenario_id": "SOP-PAGE-1034-S1",
+        "description": "Evaluate Baby Care listings based on key product attributes.",
+        "conditions": {
+          "attribute_state": "mismatch",
+          "textual_evidence": "A discrepancy is found in any of the core attributes: Size, Color, Material, Design / Pattern.",
+          "visual_evidence_required": true,
+          "visual_evidence_description": "Verify via product images that the items differ visually in model, shape, design, or specs."
+        },
+        "resolution": {
+          "decision": "Not a Duplicate - Variant",
+          "actionable_instruction": "If any core attribute (e.g. Size) differs, classify as 'Not a Duplicate - Variant' (or 'Not a Duplicate' if completely different product families). If all core attributes match and images show identical items, ignore minor packaging/logistics discrepancies and mark as 'Duplicate'."
+        }
+      }
+    ]
+  },
+  {
+    "page_number": 1035,
+    "category": "Clothing",
+    "product_type": "Clothing Item",
+    "sop_title": "Deduplication | Clothing | Core Attributes",
+    "matching_context": {
+      "attributes_under_test": [
+        "Image",
+        "Clothing Size",
+        "Actual Color",
+        "Material",
+        "Design / Pattern",
+        "Inseam"
+      ],
+      "ignore_attributes_for_matching": []
+    },
+    "scenarios": [
+      {
+        "scenario_id": "SOP-PAGE-1035-S1",
+        "description": "Evaluate Clothing listings based on key product attributes.",
+        "conditions": {
+          "attribute_state": "mismatch",
+          "textual_evidence": "A discrepancy is found in any of the core attributes: Clothing Size, Actual Color, Material, Design / Pattern, Inseam.",
+          "visual_evidence_required": true,
+          "visual_evidence_description": "Verify via product images that the items differ visually in model, shape, design, or specs."
+        },
+        "resolution": {
+          "decision": "Not a Duplicate - Variant",
+          "actionable_instruction": "If any core attribute (e.g. Clothing Size) differs, classify as 'Not a Duplicate - Variant' (or 'Not a Duplicate' if completely different product families). If all core attributes match and images show identical items, ignore minor packaging/logistics discrepancies and mark as 'Duplicate'."
+        }
+      }
+    ]
   }
 ]

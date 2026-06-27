@@ -1,9 +1,12 @@
 {
   "manifest_version": 3,
-  "name": "DupCheck Evaluator",
+  "name": "DupCheck Evaluator1",
   "version": "1.4.0",
   "description": "Duplicate detection evaluator for WALLE — auto-analyzes GTINs, highlights differences, catches intra-GTIN discrepancies. No API required.",
   "permissions": ["activeTab", "scripting", "tabs"],
+  "background": {
+    "service_worker": "background.js"
+  },
   "host_permissions": ["https://*/*", "http://*/*"],
   "action": {
     "default_popup": "popup.html",

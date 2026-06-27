@@ -28,15 +28,13 @@ def _format_list(items: list) -> str:
 
 
 def _compile_scenario(scenario: dict) -> str:
-    """Convert a single scenario dict into compact text lines."""
+    """Convert a single scenario dict into highly compact text lines."""
     sid = scenario.get("scenario_id", "?")
-    desc = scenario.get("description", "")
     cond = scenario.get("conditions", {})
     res = scenario.get("resolution", {})
 
     lines = []
-    lines.append(f"  ▸ SCENARIO {sid}")
-    lines.append(f"    Description: {desc}")
+    lines.append(f"  S[{sid}]")
 
     # Conditions
     attr_state = cond.get("attribute_state", "")
@@ -46,32 +44,32 @@ def _compile_scenario(scenario: dict) -> str:
 
     cond_parts = []
     if attr_state:
-        cond_parts.append(f"attribute_state={attr_state}")
+        cond_parts.append(f"attr_state:{attr_state}")
     if text_ev:
-        cond_parts.append(f"text_evidence: {text_ev}")
+        cond_parts.append(f"text:{text_ev}")
     if vis_req:
-        cond_parts.append(f"visual_check=REQUIRED: {vis_desc}")
+        cond_parts.append(f"visual:REQUIRED({vis_desc})")
     elif vis_desc:
-        cond_parts.append(f"visual_note: {vis_desc}")
+        cond_parts.append(f"visual:{vis_desc}")
 
-    lines.append(f"    Conditions: {' | '.join(cond_parts)}")
+    if cond_parts:
+        lines.append(f"    Conds: {' | '.join(cond_parts)}")
 
     # Resolution
     decision = res.get("decision", "?")
     action = res.get("actionable_instruction", "")
-    lines.append(f"    → DECISION: {decision}")
+    lines.append(f"    Decision: {decision}")
     if action:
-        lines.append(f"    → ACTION: {action}")
+        lines.append(f"    Action: {action}")
 
     return "\n".join(lines)
 
 
 def _compile_rule(rule: dict) -> str:
-    """Convert a single rule dict into compact text."""
+    """Convert a single rule dict into highly compact text."""
     page = rule.get("page_number", "?")
     category = rule.get("category", "?")
     product_type = rule.get("product_type", "?")
-    sop_title = rule.get("sop_title", "")
 
     mc = rule.get("matching_context", {})
     test_attrs = _format_list(mc.get("attributes_under_test", []))
@@ -80,12 +78,10 @@ def _compile_rule(rule: dict) -> str:
     scenarios = rule.get("scenarios", [])
 
     lines = []
-    lines.append(f"═══ RULE [Page {page}] | Category: {category} | Type: {product_type}")
-    if sop_title:
-        lines.append(f"    SOP: {sop_title}")
-    lines.append(f"    Test Attributes: {test_attrs}")
+    lines.append(f"R[P{page}] Cat:{category} | Type:{product_type}")
+    lines.append(f"  Attrs: {test_attrs}")
     if ignore_attrs != "None":
-        lines.append(f"    Ignore Attributes: {ignore_attrs}")
+        lines.append(f"  Ignore: {ignore_attrs}")
 
     for scenario in scenarios:
         lines.append(_compile_scenario(scenario))
