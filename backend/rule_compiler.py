@@ -12,12 +12,71 @@ The output is designed to:
 
 import json
 import os
+import re
 
 RULES_FILE = os.path.join(os.path.dirname(__file__), "rules.json")
 
 # Approximate tokens = chars / 4  (conservative estimate for English text)
 MIN_TOKEN_TARGET = 32_000
 MIN_CHAR_TARGET = MIN_TOKEN_TARGET * 4  # 128,000 chars
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  DECISION NORMALIZER — maps all legacy decision names to the 5 official ones
+# ─────────────────────────────────────────────────────────────────────────────
+_DECISION_MAP = {
+    # Old variants → Not duplicate
+    "not a duplicate - variant":                                          "Not duplicate",
+    "not a duplicate - incorrect variant attribute name data not available": "Not duplicate",
+    "not a duplicate - incorrect variant attribute names":                "Not duplicate",
+    "not a duplicate - variant attribute data not available":             "Not duplicate",
+    "not a duplicate":                                                    "Not duplicate",
+    # Compatibility
+    "not duplicate - different compatibility":                            "Not duplicate compatibility",
+    "not a duplicate - compatibility":                                    "Not duplicate compatibility",
+    "not a duplicate - different compatibility":                          "Not duplicate compatibility",
+    # Warranty
+    "not duplicate - different warranty":                                 "Not duplicate warranty",
+    "not a duplicate - different warranty":                               "Not duplicate warranty",
+    # Bad data
+    "not sure - bad data":                                               "Not sure bad data",
+    "not sure bad data":                                                 "Not sure bad data",
+    # Duplicate variants
+    "duplicate (split into clusters)":                                   "Duplicate",
+    "duplicate":                                                         "Duplicate",
+    # Rule reference — treat as not duplicate (needs human review)
+    "rule reference":                                                    "Not duplicate",
+}
+
+# Ordered regex substitutions for prose text (most specific first)
+_ACTION_REPLACEMENTS = [
+    (r"Not a Duplicate\s*-\s*Incorrect Variant Attribute Name Data Not Available", "Not duplicate"),
+    (r"Not a Duplicate\s*-\s*Incorrect Variant Attribute Names",                   "Not duplicate"),
+    (r"Not a Duplicate\s*-\s*Variant Attribute Data Not Available",                "Not duplicate"),
+    (r"Not a Duplicate\s*-\s*Different Compatibility",                             "Not duplicate compatibility"),
+    (r"Not a Duplicate\s*-\s*Compatibility",                                       "Not duplicate compatibility"),
+    (r"Not a Duplicate\s*-\s*Different Warranty",                                  "Not duplicate warranty"),
+    (r"Not a Duplicate\s*-\s*Variant",                                             "Not duplicate"),
+    (r"Not a Duplicate",                                                           "Not duplicate"),
+    (r"Not Duplicate\s*-\s*Different Compatibility",                               "Not duplicate compatibility"),
+    (r"Not Duplicate\s*-\s*Different Warranty",                                    "Not duplicate warranty"),
+    (r"Not sure\s*-\s*Bad data",                                                   "Not sure bad data"),
+    (r"Not Sure\s*-\s*Bad Data",                                                   "Not sure bad data"),
+    (r"Duplicate \(Split into Clusters\)",                                         "Duplicate"),
+    (r"Rule Reference",                                                            "Not duplicate"),
+]
+
+
+def _normalize_decision(raw: str) -> str:
+    """Map a legacy decision string to one of the 5 official action names."""
+    return _DECISION_MAP.get(raw.lower().strip(), raw)
+
+
+def _normalize_action_text(text: str) -> str:
+    """Replace legacy decision names inside prose instruction text."""
+    for pattern, replacement in _ACTION_REPLACEMENTS:
+        text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
+    return text
 
 
 def _format_list(items: list) -> str:
@@ -55,9 +114,10 @@ def _compile_scenario(scenario: dict) -> str:
     if cond_parts:
         lines.append(f"    Conds: {' | '.join(cond_parts)}")
 
-    # Resolution
-    decision = res.get("decision", "?")
-    action = res.get("actionable_instruction", "")
+    # Resolution — normalize legacy decision strings to the 5 official actions
+    decision_raw = res.get("decision", "?")
+    decision = _normalize_decision(decision_raw)
+    action = _normalize_action_text(res.get("actionable_instruction", ""))
     lines.append(f"    Decision: {decision}")
     if action:
         lines.append(f"    Action: {action}")
@@ -105,10 +165,11 @@ product type, and scenario. When a product comparison matches a rule's condition
 you MUST apply that rule's DECISION.
 
 DECISION TYPES:
-  • Duplicate          — Products are the same item, can be merged
-  • Not a Duplicate    — Products are different items, must stay separate
-  • Not sure - Bad data — Data quality issue prevents a confident decision
-  • Rule Reference     — Refer to the cited SOP/rule for the decision
+  • Not sure bad data           — Data quality issue prevents a confident decision
+  • Duplicate                   — Products are the same item, can be merged
+  • Not duplicate               — Products are different items, must stay separate
+  • Not duplicate warranty      — Products differ only by warranty
+  • Not duplicate compatibility — Products differ by vehicle/device compatibility
 
 HOW TO USE THESE RULES:
   1. Identify the product category and type from the data provided
@@ -141,7 +202,7 @@ def _build_category_index(rules: list) -> str:
         page = r.get("page_number", "?")
         decision = "?"
         for s in r.get("scenarios", []):
-            decision = s.get("resolution", {}).get("decision", "?")
+            decision = _normalize_decision(s.get("resolution", {}).get("decision", "?"))
             break
         index[cat].append(f"Page {page} ({decision})")
 

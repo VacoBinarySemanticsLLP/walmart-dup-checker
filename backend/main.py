@@ -336,13 +336,12 @@ BATCH_ANALYSIS_PROMPT = """
 TASK: Perform a full duplicate/non-duplicate/bad-data analysis on the following products.
 
 INSTRUCTIONS:
-1. For each product, detect its category and find matching SOP rules from the cached context
-2. PHASE 1 (Vertical Check): For each product individually, extract image specs via OCR and
-   check for contradictions against text attributes. Apply the SOP rules to determine if
-   attributes should be ignored for the category.
-3. PHASE 2 (Horizontal Check): Compare products that pass Phase 1 against each other.
-   Apply the SOP rules for clustering decisions — check which scenario matches and use
-   its DECISION (Duplicate / Not a Duplicate / Not sure - Bad data).
+1. PHASE 1 (Extraction & Vertical Check): For each product individually, extract image specs via OCR and check for contradictions against text attributes. If there are unresolved contradictions or missing data that prevents comparison, flag it as "Not sure bad data".
+2. PHASE 2 (Horizontal Check - Duplicate): For products that pass the vertical check, compare them against each other. If every critical attribute matches after applying SOP rules, mark them as "Duplicate".
+3. PHASE 3 (Horizontal Check - Non-Duplicates): If the products are NOT duplicates, evaluate them for the following cases:
+   - "Not duplicate warranty": if they differ only by warranty.
+   - "Not duplicate compatibility": if they differ by vehicle/device compatibility.
+   - "Not duplicate": for all other variant or non-matching product differences.
 
 Before performing ANY comparison, independently extract the following attributes from BOTH the structured text and the product images.
 
@@ -380,60 +379,53 @@ CRITICAL RULES FROM SOP:
 - Do not flag 'Bad Data' just because a specific attribute is missing (-) if that information is clearly stated in the title, description, or under a synonymous attribute name.
 - When a rule specifies visual_check=REQUIRED, images MUST be verified
 - COUNT VERIFICATION (ALL CATEGORIES): Pay extremely close attention to the Unit of Measurement (UOM) in images and text. Distinguish between 'Package-Level Count' (e.g., 1 Box, 1 Case), 'Item-Level Count' (e.g., 60 Pills, 80 Pellets), and 'Weight/Volume' (e.g., 0.3 Ounces, 50ml). Do NOT flag different types of measurements as contradictions (e.g., 'Net Content: 0.3 Ounces' vs 'Count Per Pack: 80'). If an attribute like 'Total Count' or 'Multipack Quantity' is '1', it almost always refers to '1 retail package being sold'. Do NOT flag 'Total Count: 1' as a contradiction against 'Count Per Pack: 80' or a product image showing '80 Ct'. As long as the measurements describe different aspects (weight vs count vs packages), it is a PERFECT match, not Bad Data.
-- PACKAGING HORIZONTAL RULES: A 2x30 configuration (2 bottles of 30) is NOT a duplicate of a 1x60 configuration (1 bottle of 60). Even if total units are the same, different package structures must be clustered separately (e.g., 'Not a Duplicate - Variant').
+- PACKAGING HORIZONTAL RULES: A 2x30 configuration (2 bottles of 30) is NOT a duplicate of a 1x60 configuration (1 bottle of 60). Even if total units are the same, different package structures must be clustered separately (e.g., 'Not duplicate').
 - PACKAGING TYPE RULES: Pay attention to the physical container type. A bottle is NOT a duplicate of a blister pack, and a blister pack is NOT a duplicate of a strip. Cluster these separately.
 - COMPATIBILITY OVERRIDES BAD DATA: If attributes like 'Actual Color' or 'Color' contain vehicle compatibility data (e.g. 'For 2022-2023 Chevrolet Silverado'), do NOT flag this as a color contradiction or 'Bad Data' in the vertical check. Treat it as valid compatibility information.
 - DIMENSIONS & WEIGHT ARE JUNK DATA: 'Assembled Product Width', 'Assembled Product Length', 'Assembled Product Height', and 'Assembled Product Weight' (and variations like 'Width', 'Length', 'Height', 'Weight') MUST be completely ignored in all cases. Do not check, extract, or flag contradictions based on them; treat them entirely as junk data.
-- LAZY METADATA & PLACEHOLDERS: Sellers frequently use lazy generic terms. If text attributes state "As Picture", "As Shown", "Other", or "Multicolor", you MUST assume they agree with the visual evidence. Never flag these placeholders as contradicting specific OCR values (e.g., 'Other' does NOT contradict 'Clear'). Furthermore, if text is missing (-) and OCR finds the value (e.g., a Model Number), this is data enrichment, NOT a contradiction.
+- LAZY METADATA & PLACEHOLDERS: Sellers frequently use lazy generic terms. The LAZY METADATA rule ONLY applies when the text attribute contains a recognized generic placeholder: "As Picture", "As Shown", "Other", or "Multicolor". In these cases, you MUST assume they agree with the visual evidence (e.g., 'Other' does NOT contradict 'Clear'; 'Multicolor' in text does NOT contradict a multicolor image). Furthermore, if text is missing (-) and OCR finds the value (e.g., a Model Number), this is data enrichment, NOT a contradiction. IMPORTANT LIMIT: This rule does NOT apply when the text attribute contains a specific, definitive value (e.g., 'Yellow', 'Red', 'Blue') — a specific text value is always subject to visual verification.
+- COLOR CONTRADICTION RULE (VERTICAL CHECK): When a SOP rule lists 'Color' as a core attribute under test for a category (e.g., Bedding, Fashion, Home), you MUST verify each product's Color attribute against the product image independently in the vertical check. If the text attribute states a specific, definitive color (e.g., 'Yellow') but the product image clearly shows a different color or a multicolor/mixed design, this is a REAL contradiction and must be flagged as 'Not sure bad data' for that product. Do NOT treat a specific wrong color as a placeholder. Exception: if the text says 'Multicolor' and the image is multicolor, that is consistent — no contradiction. Exception: if compatibility data is stored in the Color field (e.g., vehicle make/model), apply the COMPATIBILITY OVERRIDES BAD DATA rule instead.
 - CLUSTERING LOGIC - IDENTICALS: Group identical/duplicate products together in the SAME cluster.
-- CLUSTERING LOGIC - VARIANTS & UNIQUE: If a product is a variant, a completely unique item, or "Not a Duplicate", it MUST be placed in its OWN SEPARATE, STANDALONE cluster. Do NOT group variants or non-duplicates together with the primary product or with each other. Each gets its own cluster.
+- CLUSTERING LOGIC - VARIANTS & UNIQUE: If a product is a variant, a completely unique item, or "Not duplicate", it MUST be placed in its OWN SEPARATE, STANDALONE cluster. Do NOT group variants or non-duplicates together with the primary product or with each other. Each gets its own cluster.
 - CLUSTERING LOGIC - BAD DATA: Bad data products MUST be separated into their own individual clusters, never merged with any other product.
 - CLUSTERING LOGIC - DIFFERENT ATTRIBUTES: Different sizes, model numbers, finish types, or compatibilities = SEPARATE clusters always.
 - You MUST assign exactly ONE of the following official actions to each cluster:
   ACTION SELECTION HIERARCHY (MANDATORY)
 
-When multiple conditions apply, ALWAYS select exactly ONE action using the following priority order:
+Follow this exact required flow when assigning actions:
 
-1. "Not Duplicate - Different Compatibility"
-   Use when compatibility differs (vehicle, device, model, application, etc.), regardless of other variant differences or missing data.
-
-2. "Not Sure - Bad Data"
-   Use if:
+STEP 1: "Not sure bad data" (Vertical Check)
+   Evaluate this FIRST. Use if:
    - Required attributes cannot be verified.
    - Image and text contain unresolved contradictions.
    - OCR evidence is insufficient for required verification.
    - Critical product information is missing and prevents reliable comparison.
 
-3. "Not Duplicate - Different Warranty"
-   Use when warranty is the only material differentiator and SOP specifies warranty as variant-driving.
-
-4. "Not a Duplicate - Incorrect Variant Attribute Name Data Not Available"
-   Use when variant attribute names are incorrect and the actual variant values cannot be determined.
-
-5. "Not a Duplicate - Incorrect Variant Attribute Names"
-   Use when products differ only because variant information is stored under incorrect attribute names.
-
-6. "Not a Duplicate - Variant Attribute Data Not Available"
-   Use when variant-driving attributes are missing and variant status cannot be determined.
-
-7. "Not a Duplicate - Variant"
-   Use when products belong to the same product family but differ in one or more variant-driving attributes.
-
-8. "Duplicate"
+STEP 2: "Duplicate" (Horizontal Check)
+   If it is NOT bad data, evaluate for Duplicate.
    Use when every critical attribute matches after applying SOP ignore rules.
 
-9. "Not a Duplicate"
-   Use only when the products belong to completely different product families and are not variants of each other.
+STEP 3: Evaluate all other cases (If NOT Duplicate)
+   If products are not duplicates, you MUST assign one of the following:
+
+   - "Not duplicate warranty"
+     Use when warranty is the only material differentiator and SOP specifies warranty as variant-driving.
+
+   - "Not duplicate compatibility"
+     Use when compatibility differs (vehicle, device, model, application, etc.), regardless of other variant differences or missing data.
+
+   - "Not duplicate"
+     Use for all other cases where products belong to different families, or are variants differing in one or more variant-driving attributes not covered above.
 
 GENERALIZED METADATA NOISE & TRUTH HIERARCHY:
 To handle messy marketplace seller-submitted data, apply the following "common sense" hierarchy over the raw rules:
 - CORE IDENTITY TIERS:
-  * Tier 1 (Core Identity): Brand, capacity/volume (e.g. 32oz, 1 Liter), model number, and packaging structures (e.g. 1-pack vs 2-pack). Discrepancies here are critical and drive "Not a Duplicate" / "Variant" decisions.
+  * Tier 1 (Core Identity): Brand, capacity/volume (e.g. 32oz, 1 Liter), model number, and packaging structures (e.g. 1-pack vs 2-pack). Discrepancies here are critical and drive "Not duplicate" decisions.
   * Tier 2 (Visual Specs): Color, Finish, Material. If these differ, use the Image as the absolute tie-breaker. If the image shows them as identical, ignore the text discrepancy (e.g., ignore 'Multicolor' vs 'Matte Black' if visually identical).
-  * Tier 3 (Logistics/Marketing Noise): "Is Assembly Required", assembly instructions, Assembled Product dimensions (Length, Width, Height, Weight), Bulk Size, target audience, subjective benefits (e.g. "Hair Product Form" cream vs liquid, or "Hair Type" fine vs damaged). Completely IGNORE discrepancies in Tier 3 attributes. Do NOT flag 'Bad Data' or 'Variant' based on Tier 3 differences.
-- VISUAL GROUNDING: If the primary product images are identical, you must maintain a "Duplicate" decision unless there is a clear, un-ignorable mismatch in a Tier 1 Core Identity attribute (different Model Numbers, or different Capacity). HOWEVER, for products featuring printed artwork, graphics, or painted scenes (e.g., printed lanterns, decorative items), you MUST perform a strict micro-level visual comparison of the artwork itself (e.g., character poses, direction, background elements, specific graphic designs). If the artwork/graphic differs in ANY way, the images are NOT identical, and you must flag it as 'Not a Duplicate - Variant'.
-- DATA ASYMMETRY TOLERANCE: Missing attributes (e.g., `-` or `None` on one side but present on the other) are data gaps, not contradictions. Never flag "Bad Data" or "Variant" based on missing data.
-- ACTION HIERARCHY OVERRIDE: If there is clear proof that the items are variants or completely different (e.g., different Model Numbers, different Native Resolutions), choose "Not a Duplicate - Variant" or "Not a Duplicate". Choosing "Not a Duplicate" or "Variant" overrides any minor "Bad Data" triggers.
+  * Tier 3 (Logistics/Marketing Noise): "Is Assembly Required", assembly instructions, Assembled Product dimensions (Length, Width, Height, Weight), Bulk Size, target audience, subjective benefits (e.g. "Hair Product Form" cream vs liquid, or "Hair Type" fine vs damaged). Completely IGNORE discrepancies in Tier 3 attributes. Do NOT flag 'Not sure bad data' or 'Not duplicate' based on Tier 3 differences.
+- VISUAL GROUNDING: If the primary product images are identical, you must maintain a "Duplicate" decision unless there is a clear, un-ignorable mismatch in a Tier 1 Core Identity attribute (different Model Numbers, or different Capacity). HOWEVER, for products featuring printed artwork, graphics, or painted scenes (e.g., printed lanterns, decorative items), you MUST perform a strict micro-level visual comparison of the artwork itself (e.g., character poses, direction, background elements, specific graphic designs). If the artwork/graphic differs in ANY way, the images are NOT identical, and you must flag it as 'Not duplicate'.
+- DATA ASYMMETRY TOLERANCE: Missing attributes (e.g., `-` or `None` on one side but present on the other) are data gaps, not contradictions. Never flag "Not sure bad data" or "Not duplicate" based on missing data.
+- ACTION HIERARCHY OVERRIDE: If there is clear proof that the items are variants or completely different (e.g., different Model Numbers, different Native Resolutions), choose "Not duplicate". Choosing "Not duplicate" overrides any minor "Not sure bad data" triggers.
 
 Respond with JSON only (no markdown, no backticks):
 {
@@ -458,7 +450,7 @@ Respond with JSON only (no markdown, no backticks):
     {
       "cluster_name": "string (descriptive label)",
       "product_ids": ["string"],
-      "cluster_type": "string (duplicate|variant|unique|bad_data)",
+      "cluster_type": "string (duplicate|not_duplicate|bad_data)",
       "recommended_action": "Exact string from the official actions list above",
       "matched_sop_rule": "scenario_id that determined this clustering",
       "reason": "string (ULTRA-SHORT 1-2 sentence summary. Focus only on the main difference or missing attribute. DO NOT write long paragraphs.)"
@@ -576,12 +568,21 @@ async def process_batch_analysis(products):
         f"• CLUSTERING REMINDER:\n"
         f"  - Each BAD DATA product → its OWN standalone cluster.\n"
         f"  - DUPLICATE products → ONE shared cluster.\n"
-        f"  - Each VARIANT / NOT A DUPLICATE product → its OWN standalone cluster.\n"
+        f"  - Each NOT DUPLICATE product → its OWN standalone cluster.\n"
         f"  - Following this rule: if you have 2 bad data + 3 duplicates + 1 not a duplicate,\n"
         f"    you MUST output exactly 4 clusters.\n"
-        f"• 'Not Sure – Bad Data' is LAST RESORT. Use actions 1–8 first.\n"
+        f"• 'Not sure bad data' is LAST RESORT. Use actions 2-5 first.\n"
         f"  Do NOT use Bad Data for missing attributes or OCR gaps.\n"
     )
+    
+    if n == 2:
+        cardinal_prompt += (
+            f"• SPECIAL RULE FOR EXACTLY 2 PRODUCTS:\n"
+            f"  - If ANY ONE of the 2 products evaluates to 'Not sure bad data' in the vertical check, you MUST classify ALL of them as 'Not sure bad data' in horizontal clustering.\n"
+            f"  - If they are duplicates, classify the cluster as 'Duplicate'.\n"
+            f"  - Otherwise, use the standard rules.\n"
+        )
+    
     content_parts = [types.Part.from_text(text=cardinal_prompt)]
 
     async with httpx.AsyncClient() as http_client:
@@ -884,5 +885,5 @@ if __name__ == "__main__":
     # Register cleanup on shutdown (delete cache to stop billing)
     atexit.register(delete_rule_cache)
 
-    print("DupCheck backend running on https://dupcheck.duckdns.org")
+    print("DupCheck backend running on http://localhost:8000")
     app.run(host="0.0.0.0", port=8000, debug=True)
