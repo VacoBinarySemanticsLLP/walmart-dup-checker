@@ -446,6 +446,16 @@ When multiple conditions apply, ALWAYS select exactly ONE action using the follo
 9. "Not a Duplicate"
    Use only when the products belong to completely different product families and are not variants of each other.
 
+GENERALIZED METADATA NOISE & TRUTH HIERARCHY:
+To handle messy marketplace seller-submitted data, apply the following "common sense" hierarchy over the raw rules:
+- CORE IDENTITY TIERS:
+  * Tier 1 (Core Identity): Brand, capacity/volume (e.g. 32oz, 1 Liter), model number, and packaging structures (e.g. 1-pack vs 2-pack). Discrepancies here are critical and drive "Not a Duplicate" / "Variant" decisions.
+  * Tier 2 (Visual Specs): Color, Finish, Material. If these differ, use the Image as the absolute tie-breaker. If the image shows them as identical, ignore the text discrepancy (e.g., ignore 'Multicolor' vs 'Matte Black' if visually identical).
+  * Tier 3 (Logistics/Marketing Noise): Assembled Product dimensions (Length, Width, Height, Weight), Bulk Size, target audience, subjective benefits (e.g. "Hair Product Form" cream vs liquid, or "Hair Type" fine vs damaged). Completely IGNORE discrepancies in Tier 3 attributes. Do NOT flag 'Bad Data' or 'Variant' based on Tier 3 differences.
+- VISUAL GROUNDING: If the primary product images are identical, you must maintain a "Duplicate" decision unless there is a clear, un-ignorable mismatch in a Tier 1 Core Identity attribute (different Model Numbers, or different Capacity).
+- DATA ASYMMETRY TOLERANCE: Missing attributes (e.g., `-` or `None` on one side but present on the other) are data gaps, not contradictions. Never flag "Bad Data" or "Variant" based on missing data.
+- ACTION HIERARCHY OVERRIDE: If there is clear proof that the items are variants or completely different (e.g., different Model Numbers, different Native Resolutions), choose "Not a Duplicate - Variant" or "Not a Duplicate". Choosing "Not a Duplicate" or "Variant" overrides any minor "Bad Data" triggers.
+
 Respond with JSON only (no markdown, no backticks):
 {
   "vertical_checks": [
@@ -479,9 +489,9 @@ Respond with JSON only (no markdown, no backticks):
 """
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  ANALYSIS FUNCTIONS
-# ─────────────────────────────────────────────────────────────────────────────
+─────────────────────────────────────────────────────────────────────────────
+ ANALYSIS FUNCTIONS
+─────────────────────────────────────────────────────────────────────────────
 
 def _build_image_parts(image_data_list: list) -> list:
     """Convert fetched image dicts to genai Part objects."""
@@ -572,14 +582,23 @@ MAX_RETRIES = 1
 async def process_batch_analysis(products):
     n = len(products)
 
-    # Inject cardinality constraint into the prompt so Gemini knows EXACTLY
-    # how many products to output.  Without this the model occasionally drops
-    # one product from vertical_checks or horizontal_clustering.
+    # Append cardinality + clustering reminder to ensure Gemini outputs all
+    # products and applies the correct clustering rules.
     cardinal_prompt = BATCH_ANALYSIS_PROMPT + (
-        f"\n\nCRITICAL — You are analyzing EXACTLY {n} products.  "
-        f"Your vertical_checks array MUST contain EXACTLY {n} entries — "
-        f"one for each product_id listed above.  "
-        f"Do NOT skip, merge, or omit ANY product."
+        f"\n\n══════════════════════════════════════════════════════════════════\n"
+        f"FINAL REMINDERS BEFORE YOU RESPOND\n"
+        f"══════════════════════════════════════════════════════════════════\n"
+        f"• You are analyzing EXACTLY {n} products.\n"
+        f"• Your vertical_checks array MUST contain EXACTLY {n} entries —\n"
+        f"  one for each product_id listed above. Do NOT skip, merge, or omit ANY product.\n"
+        f"• CLUSTERING REMINDER:\n"
+        f"  - Each BAD DATA product → its OWN standalone cluster.\n"
+        f"  - DUPLICATE products → ONE shared cluster.\n"
+        f"  - Each VARIANT / NOT A DUPLICATE product → its OWN standalone cluster.\n"
+        f"  - Following this rule: if you have 2 bad data + 3 duplicates + 1 not a duplicate,\n"
+        f"    you MUST output exactly 4 clusters.\n"
+        f"• 'Not Sure – Bad Data' is LAST RESORT. Use actions 1–8 first.\n"
+        f"  Do NOT use Bad Data for missing attributes or OCR gaps.\n"
     )
     content_parts = [types.Part.from_text(text=cardinal_prompt)]
 
@@ -698,7 +717,9 @@ async def process_batch_analysis(products):
                 f"You MISSED product(s): {missing_ids}.  "
                 f"Please output the COMPLETE analysis for ALL {n} products "
                 f"— vertical_checks MUST contain exactly {n} entries.  "
-                f"Every product_id below MUST appear exactly once."
+                f"Every product_id below MUST appear exactly once.\n"
+                f"Also recheck your clustering: bad data products must each have "
+                f"their own standalone cluster."
             )
             content_parts.append(types.Part.from_text(text=correction))
             contents = [types.Content(role="user", parts=content_parts)]
@@ -768,9 +789,9 @@ async def process_batch_analysis(products):
         return {"status": "error", "message": msg, "status_code": code}
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  FLASK APP & ROUTES
-# ─────────────────────────────────────────────────────────────────────────────
+─────────────────────────────────────────────────────────────────────────────
+ FLASK APP & ROUTES
+─────────────────────────────────────────────────────────────────────────────
 app = Flask(__name__)
 CORS(app)
 
@@ -879,9 +900,9 @@ def analyze_batch():
     return jsonify(result)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  STARTUP & SHUTDOWN
-# ─────────────────────────────────────────────────────────────────────────────
+─────────────────────────────────────────────────────────────────────────────
+ STARTUP & SHUTDOWN
+─────────────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     # Create context cache on startup
     create_rule_cache()
