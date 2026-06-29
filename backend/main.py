@@ -223,6 +223,7 @@ def generate_with_cache(contents: list) -> str:
                     cached_content=cache_name,
                     safety_settings=relaxed_safety,
                     response_mime_type="application/json"
+
                 )
             )
         else:
@@ -406,6 +407,8 @@ CRITICAL RULES FROM SOP:
 - PACKAGING HORIZONTAL RULES: A 2x30 configuration (2 bottles of 30) is NOT a duplicate of a 1x60 configuration (1 bottle of 60). Even if total units are the same, different package structures must be clustered separately (e.g., 'Not a Duplicate - Variant').
 - PACKAGING TYPE RULES: Pay attention to the physical container type. A bottle is NOT a duplicate of a blister pack, and a blister pack is NOT a duplicate of a strip. Cluster these separately.
 - COMPATIBILITY OVERRIDES BAD DATA: If attributes like 'Actual Color' or 'Color' contain vehicle compatibility data (e.g. 'For 2022-2023 Chevrolet Silverado'), do NOT flag this as a color contradiction or 'Bad Data' in the vertical check. Treat it as valid compatibility information.
+- DIMENSIONS & WEIGHT ARE JUNK DATA: 'Assembled Product Width', 'Assembled Product Length', 'Assembled Product Height', and 'Assembled Product Weight' (and variations like 'Width', 'Length', 'Height', 'Weight') MUST be completely ignored in all cases. Do not check, extract, or flag contradictions based on them; treat them entirely as junk data.
+- LAZY METADATA & PLACEHOLDERS: Sellers frequently use lazy generic terms. If text attributes state "As Picture", "As Shown", "Other", or "Multicolor", you MUST assume they agree with the visual evidence. Never flag these placeholders as contradicting specific OCR values (e.g., 'Other' does NOT contradict 'Clear'). Furthermore, if text is missing (-) and OCR finds the value (e.g., a Model Number), this is data enrichment, NOT a contradiction.
 - CLUSTERING LOGIC - IDENTICALS: Group identical/duplicate products together in the SAME cluster.
 - CLUSTERING LOGIC - VARIANTS & UNIQUE: If a product is a variant, a completely unique item, or "Not a Duplicate", it MUST be placed in its OWN SEPARATE, STANDALONE cluster. Do NOT group variants or non-duplicates together with the primary product or with each other. Each gets its own cluster.
 - CLUSTERING LOGIC - BAD DATA: Bad data products MUST be separated into their own individual clusters, never merged with any other product.
@@ -451,8 +454,8 @@ To handle messy marketplace seller-submitted data, apply the following "common s
 - CORE IDENTITY TIERS:
   * Tier 1 (Core Identity): Brand, capacity/volume (e.g. 32oz, 1 Liter), model number, and packaging structures (e.g. 1-pack vs 2-pack). Discrepancies here are critical and drive "Not a Duplicate" / "Variant" decisions.
   * Tier 2 (Visual Specs): Color, Finish, Material. If these differ, use the Image as the absolute tie-breaker. If the image shows them as identical, ignore the text discrepancy (e.g., ignore 'Multicolor' vs 'Matte Black' if visually identical).
-  * Tier 3 (Logistics/Marketing Noise): Assembled Product dimensions (Length, Width, Height, Weight), Bulk Size, target audience, subjective benefits (e.g. "Hair Product Form" cream vs liquid, or "Hair Type" fine vs damaged). Completely IGNORE discrepancies in Tier 3 attributes. Do NOT flag 'Bad Data' or 'Variant' based on Tier 3 differences.
-- VISUAL GROUNDING: If the primary product images are identical, you must maintain a "Duplicate" decision unless there is a clear, un-ignorable mismatch in a Tier 1 Core Identity attribute (different Model Numbers, or different Capacity).
+  * Tier 3 (Logistics/Marketing Noise): "Is Assembly Required", assembly instructions, Assembled Product dimensions (Length, Width, Height, Weight), Bulk Size, target audience, subjective benefits (e.g. "Hair Product Form" cream vs liquid, or "Hair Type" fine vs damaged). Completely IGNORE discrepancies in Tier 3 attributes. Do NOT flag 'Bad Data' or 'Variant' based on Tier 3 differences.
+- VISUAL GROUNDING: If the primary product images are identical, you must maintain a "Duplicate" decision unless there is a clear, un-ignorable mismatch in a Tier 1 Core Identity attribute (different Model Numbers, or different Capacity). HOWEVER, for products featuring printed artwork, graphics, or painted scenes (e.g., printed lanterns, decorative items), you MUST perform a strict micro-level visual comparison of the artwork itself (e.g., character poses, direction, background elements, specific graphic designs). If the artwork/graphic differs in ANY way, the images are NOT identical, and you must flag it as 'Not a Duplicate - Variant'.
 - DATA ASYMMETRY TOLERANCE: Missing attributes (e.g., `-` or `None` on one side but present on the other) are data gaps, not contradictions. Never flag "Bad Data" or "Variant" based on missing data.
 - ACTION HIERARCHY OVERRIDE: If there is clear proof that the items are variants or completely different (e.g., different Model Numbers, different Native Resolutions), choose "Not a Duplicate - Variant" or "Not a Duplicate". Choosing "Not a Duplicate" or "Variant" overrides any minor "Bad Data" triggers.
 
@@ -463,7 +466,7 @@ Respond with JSON only (no markdown, no backticks):
       "product_id": "Exact string from the PRODUCT ID header (e.g. 'GTIN#1 (007...)')",
       "detected_category": "string",
       "matched_sop_rules": ["scenario_ids consulted"],
-      "extracted_image_summary": "string (ultra-brief 5-10 word summary of key visual specs seen in the image)",
+      "extracted_image_summary": "string (ultra-brief 5-10 word summary of key visual specs. If printed artwork is present, explicitly describe its specific orientation/elements like 'Cardinal facing left with pine trees' to capture differences)",
       "has_bad_data": boolean,
       "reason": "string (ULTRA-SHORT 1-2 sentence summary. Focus only on the main difference or missing attribute. DO NOT write long paragraphs.)",
       "mismatch_details": [
@@ -489,9 +492,9 @@ Respond with JSON only (no markdown, no backticks):
 """
 
 
-─────────────────────────────────────────────────────────────────────────────
- ANALYSIS FUNCTIONS
-─────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+#  ANALYSIS FUNCTIONS
+# ─────────────────────────────────────────────────────────────────────────────
 
 def _build_image_parts(image_data_list: list) -> list:
     """Convert fetched image dicts to genai Part objects."""
@@ -789,9 +792,9 @@ async def process_batch_analysis(products):
         return {"status": "error", "message": msg, "status_code": code}
 
 
-─────────────────────────────────────────────────────────────────────────────
- FLASK APP & ROUTES
-─────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+#  FLASK APP & ROUTES
+# ─────────────────────────────────────────────────────────────────────────────
 app = Flask(__name__)
 CORS(app)
 
@@ -900,9 +903,9 @@ def analyze_batch():
     return jsonify(result)
 
 
-─────────────────────────────────────────────────────────────────────────────
- STARTUP & SHUTDOWN
-─────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+#  STARTUP & SHUTDOWN
+# ─────────────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     # Create context cache on startup
     create_rule_cache()
