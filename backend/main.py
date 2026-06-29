@@ -21,7 +21,6 @@ from rule_compiler import compile_rules, get_compiled_rules_stats
 # ─────────────────────────────────────────────────────────────────────────────
 #  CONFIGURATION
 # ─────────────────────────────────────────────────────────────────────────────
-CACHE_FILE = "ai_analysis_cache.json"
 GEMINI_MODEL = "gemini-2.5-flash"
 CACHE_TTL_HOURS = 4  # How long the context cache stays alive
 
@@ -248,36 +247,6 @@ def generate_with_cache(contents: list) -> str:
     raise Exception(f"Gemini API blocked response or returned no text. Finish reason: {finish_reason}")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  LOCAL RESPONSE CACHE  (unchanged from original)
-# ─────────────────────────────────────────────────────────────────────────────
-def get_cache():
-    if os.path.exists(CACHE_FILE):
-        try:
-            with open(CACHE_FILE, 'r') as f:
-                return json.load(f)
-        except Exception:
-            return {}
-    return {}
-
-def save_cache(cache_data):
-    try:
-        fd, tmp_path = tempfile.mkstemp(dir='.', prefix='.cache_tmp_', suffix='.json')
-        with os.fdopen(fd, 'w') as f:
-            json.dump(cache_data, f)
-        os.replace(tmp_path, CACHE_FILE)
-    except Exception as e:
-        print("Failed to save cache:", e)
-
-def get_cache_key(products):
-    normalized_products = []
-    for p in products:
-        norm_p = p.copy()
-        if 'imageUrls' in norm_p and isinstance(norm_p['imageUrls'], list):
-            norm_p['imageUrls'] = sorted(list(set(norm_p['imageUrls'])))
-        normalized_products.append(norm_p)
-    payload_str = json.dumps(normalized_products, sort_keys=True)
-    return hashlib.md5(payload_str.encode('utf-8')).hexdigest()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -489,9 +458,9 @@ Respond with JSON only (no markdown, no backticks):
 """
 
 
-─────────────────────────────────────────────────────────────────────────────
- ANALYSIS FUNCTIONS
-─────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+#  ANALYSIS FUNCTIONS
+# ─────────────────────────────────────────────────────────────────────────────
 
 def _build_image_parts(image_data_list: list) -> list:
     """Convert fetched image dicts to genai Part objects."""
@@ -789,9 +758,9 @@ async def process_batch_analysis(products):
         return {"status": "error", "message": msg, "status_code": code}
 
 
-─────────────────────────────────────────────────────────────────────────────
- FLASK APP & ROUTES
-─────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+#  FLASK APP & ROUTES
+# ─────────────────────────────────────────────────────────────────────────────
 app = Flask(__name__)
 CORS(app)
 
@@ -874,35 +843,24 @@ def analyze_column():
 def analyze_batch():
     req_data = request.get_json()
     products = req_data.get("products", [])
-    force_refresh = req_data.get("forceRefresh", False)
 
-    print(f"Received batch analysis request for {len(products)} products (Force Refresh: {force_refresh})")
+    print(f"Received batch analysis request for {len(products)} products")
 
     if not products:
         return jsonify({"status": "error", "message": "[HTTP 400] No products provided for analysis.", "status_code": 400}), 400
 
-    cache_key = get_cache_key(products)
-    cache = get_cache()
-
-    if not force_refresh and cache_key in cache:
-        print(f"✅ Cache HIT! Returning cached AI result for key: {cache_key}")
-        return jsonify(cache[cache_key])
-
-    print(f"❌ Cache MISS (or forced refresh). Running AI analysis...")
+    print(f"🚀 Running AI batch analysis...")
     result = asyncio.run(process_batch_analysis(products))
 
-    if result.get("status") == "success":
-        cache[cache_key] = result
-        save_cache(cache)
-    elif result.get("status") == "error":
+    if result.get("status") == "error":
         return jsonify(result), result.get("status_code", 500)
 
     return jsonify(result)
 
 
-─────────────────────────────────────────────────────────────────────────────
- STARTUP & SHUTDOWN
-─────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+#  STARTUP & SHUTDOWN
+# ─────────────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     # Create context cache on startup
     create_rule_cache()
