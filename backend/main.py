@@ -137,7 +137,9 @@ def generate_with_cache(contents: list) -> str:
                 contents=contents,
                 config=types.GenerateContentConfig(
                     cached_content=cache_name,
-                    response_mime_type="application/json"
+                    response_mime_type="application/json",
+                    temperature=0,
+                    seed=42
                 )
             )
         except Exception as e:
@@ -166,7 +168,9 @@ def generate_with_cache(contents: list) -> str:
             model=GEMINI_MODEL,
             contents=full_contents,
             config=types.GenerateContentConfig(
-                response_mime_type="application/json"
+                response_mime_type="application/json",
+                temperature=0,
+                seed=42
             )
         )
 
@@ -221,8 +225,9 @@ def generate_with_cache(contents: list) -> str:
                 config=types.GenerateContentConfig(
                     cached_content=cache_name,
                     safety_settings=relaxed_safety,
-                    response_mime_type="application/json"
-
+                    response_mime_type="application/json",
+                    temperature=0,
+                    seed=42
                 )
             )
         else:
@@ -233,7 +238,9 @@ def generate_with_cache(contents: list) -> str:
                 contents=full_contents,
                 config=types.GenerateContentConfig(
                     safety_settings=relaxed_safety,
-                    response_mime_type="application/json"
+                    response_mime_type="application/json",
+                    temperature=0,
+                    seed=42
                 )
             )
 
@@ -461,6 +468,9 @@ Respond with JSON only (no markdown, no backticks):
 """
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  ANALYSIS FUNCTIONS
+# ─────────────────────────────────────────────────────────────────────────────
 # ─────────────────────────────────────────────────────────────────────────────
 #  ANALYSIS FUNCTIONS
 # ─────────────────────────────────────────────────────────────────────────────
@@ -764,6 +774,9 @@ async def process_batch_analysis(products):
 # ─────────────────────────────────────────────────────────────────────────────
 #  FLASK APP & ROUTES
 # ─────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+#  FLASK APP & ROUTES
+# ─────────────────────────────────────────────────────────────────────────────
 app = Flask(__name__)
 CORS(app)
 
@@ -861,6 +874,9 @@ def analyze_batch():
     return jsonify(result)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  STARTUP & SHUTDOWN
+# ─────────────────────────────────────────────────────────────────────────────
 # ─────────────────────────────────────────────────────────────────────────────
 #  STARTUP & SHUTDOWN
 # ─────────────────────────────────────────────────────────────────────────────
