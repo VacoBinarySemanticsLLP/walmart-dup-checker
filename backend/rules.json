@@ -6983,8 +6983,8 @@
   {
     "page_number": 1004,
     "category": "Cell Phones",
-    "product_type": "Cell Phone",
-    "sop_title": "Deduplication | Cell Phones | Core Attributes",
+    "product_type": "ALL CELL PHONES",
+    "sop_title": "Deduplication | Cell Phones | Global Override",
     "matching_context": {
       "attributes_under_test": [
         "Version (locked / unlocked)",
@@ -6995,21 +6995,26 @@
         "Image",
         "Color"
       ],
-      "ignore_attributes_for_matching": []
+      "ignore_attributes_for_matching": [
+        "Wireless Technology",
+        "Cellular Network Technology",
+        "4G / 5G specifications",
+        "Operating System Version"
+      ]
     },
     "scenarios": [
       {
-        "scenario_id": "SOP-PAGE-1004-S1",
-        "description": "Evaluate Cell Phones listings based on key product attributes.",
+        "scenario_id": "SOP-CELLPHONES-GLOBAL",
+        "description": "Evaluate Cell Phones based ONLY on core identity. Ignore minor wireless specs and tolerate multi-camera resolution listings.",
         "conditions": {
-          "attribute_state": "mismatch",
-          "textual_evidence": "A discrepancy is found in any of the core attributes: Version (locked / unlocked), Model, Capacity, Cell phone type, Camera resolution, Color.",
-          "visual_evidence_required": true,
-          "visual_evidence_description": "Verify via product images that the items differ visually in model, shape, design, or specs."
+          "attribute_state": "secondary_mismatch_or_camera_conflict",
+          "textual_evidence": "Core specs match or differ, but there are discrepancies in ignored wireless tech, or multiple camera megapixel specs (e.g., 12MP vs 108MP) exist within the same product.",
+          "visual_evidence_required": false,
+          "visual_evidence_description": "N/A"
         },
         "resolution": {
           "decision": "Not a Duplicate - Variant",
-          "actionable_instruction": "If any core attribute (e.g. Version (locked / unlocked)) differs, classify as 'Not a Duplicate - Variant' (or 'Not a Duplicate' if completely different product families). If all core attributes match and images show identical items, ignore minor packaging/logistics discrepancies and mark as 'Duplicate'."
+          "actionable_instruction": "1) If core attributes like Lock Status, Carrier, Capacity, or Model differ, mark as 'Variant'. 2) NEVER flag 'Bad Data' if a phone has multiple camera resolutions (e.g., 12MP and 108MP) in its text; assume these are Front/Rear lenses. 3) Completely ignore all 4G/5G or Wireless Technology discrepancies."
         }
       }
     ]
@@ -7977,34 +7982,82 @@
     ]
   },
   {
-    "page_number": 1035,
+    "page_number": 9999,
     "category": "Clothing",
-    "product_type": "Clothing Item",
-    "sop_title": "Deduplication | Clothing | Core Attributes",
+    "product_type": "ALL CLOTHING",
+    "sop_title": "Duplicate | Clothing | Global Core Identity Override",
     "matching_context": {
       "attributes_under_test": [
-        "Image",
+        "Product Name",
         "Clothing Size",
+        "Shoe Size",
         "Actual Color",
         "Material",
         "Design / Pattern",
         "Inseam"
       ],
-      "ignore_attributes_for_matching": []
+      "ignore_attributes_for_matching": [
+        "Clothing Fit",
+        "Clothing Size Group",
+        "Season",
+        "Clothing Length Style",
+        "Fabric Care",
+        "Target Audience",
+        "Occasion",
+        "Brand Variations"
+      ]
     },
     "scenarios": [
       {
-        "scenario_id": "SOP-PAGE-1035-S1",
-        "description": "Evaluate Clothing listings based on key product attributes.",
+        "scenario_id": "SOP-CLOTHING-GLOBAL",
+        "description": "For any clothing or apparel item, only core identity attributes dictate variants. All other subjective or secondary metadata must be ignored if they mismatch.",
         "conditions": {
-          "attribute_state": "mismatch",
-          "textual_evidence": "A discrepancy is found in any of the core attributes: Clothing Size, Actual Color, Material, Design / Pattern, Inseam.",
+          "attribute_state": "secondary_mismatch",
+          "textual_evidence": "The core attributes (Size, Color, Material, Pattern, Inseam) match perfectly, but secondary attributes (like Fit, Season, Size Group) differ or are missing.",
           "visual_evidence_required": true,
-          "visual_evidence_description": "Verify via product images that the items differ visually in model, shape, design, or specs."
+          "visual_evidence_description": "Images visually confirm the exact same clothing item."
+        },
+        "resolution": {
+          "decision": "Duplicate",
+          "actionable_instruction": "Completely ignore all discrepancies in secondary attributes (Fit, Season, Size Group, Fabric Care, etc.). If the core whitelist attributes and the image match, you MUST mark it as a Duplicate."
+        }
+      }
+    ]
+  },
+  {
+    "page_number": 10000,
+    "category": "Home & Furniture",
+    "product_type": "ALL HOME & FURNITURE",
+    "sop_title": "Duplicate | Home & Furniture | Global Core Identity & Artwork Strictness",
+    "matching_context": {
+      "attributes_under_test": [
+        "Dimensions",
+        "Finish",
+        "Count / Set",
+        "Image",
+        "Material",
+        "Color"
+      ],
+      "ignore_attributes_for_matching": [
+        "Mount Type",
+        "Target Audience",
+        "Warranty",
+        "Room Type"
+      ]
+    },
+    "scenarios": [
+      {
+        "scenario_id": "SOP-FURNITURE-GLOBAL",
+        "description": "Evaluate Home & Furniture listings based strictly on core whitelist. Enforce artwork strictness and tolerate semantic terminology misuse for structural parts.",
+        "conditions": {
+          "attribute_state": "core_mismatch_or_artwork_difference",
+          "textual_evidence": "Core specs match, but there are terminology discrepancies (e.g., 'Doors' vs 'Shelves'), or printed artwork/pattern visually differs.",
+          "visual_evidence_required": true,
+          "visual_evidence_description": "Verify via images if the core physical structure matches and if the specific painted artwork/pattern perfectly aligns."
         },
         "resolution": {
           "decision": "Not a Duplicate - Variant",
-          "actionable_instruction": "If any core attribute (e.g. Clothing Size) differs, classify as 'Not a Duplicate - Variant' (or 'Not a Duplicate' if completely different product families). If all core attributes match and images show identical items, ignore minor packaging/logistics discrepancies and mark as 'Duplicate'."
+          "actionable_instruction": "1) If the core whitelist attributes differ, mark as Variant. 2) ARTWORK STRICTNESS: If the item has printed artwork (e.g., lanterns, rugs), strictly compare the painting/pattern details (e.g., cardinal pose, background). If artwork differs, it is a Variant. 3) TERMINOLOGY TOLERANCE: Ignore structural semantic misuse (e.g., text says '3 Doors' but image shows '3 open shelves'); treat as a perfect match if compartment count aligns. Ignore 'Mount Type' contradictions."
         }
       }
     ]
