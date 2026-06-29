@@ -90,7 +90,7 @@ window.analyzeProductWithGemini = async function(product) {
       imageUrls: imageUrls
     };
 
-    const response = await fetch('http://127.0.0.1:8000/api/analyze-column', {
+    const response = await fetch('https://dupcheck.duckdns.org/api/analyze-column', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -202,7 +202,7 @@ window.analyzeBatchWithGemini = async function(products, forceRefresh = false) {
     
     console.log(`🤖 DupCheck AI: Sending batch request to backend (Force Refresh: ${forceRefresh}):`, payload);
 
-    const response = await fetch('http://127.0.0.1:8000/api/analyze-batch', {
+    const response = await fetch('https://dupcheck.duckdns.org/api/analyze-batch', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: payloadStr

@@ -877,9 +877,6 @@ def analyze_batch():
 # ─────────────────────────────────────────────────────────────────────────────
 #  STARTUP & SHUTDOWN
 # ─────────────────────────────────────────────────────────────────────────────
-# ─────────────────────────────────────────────────────────────────────────────
-#  STARTUP & SHUTDOWN
-# ─────────────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     # Create context cache on startup
     create_rule_cache()
@@ -887,5 +884,5 @@ if __name__ == "__main__":
     # Register cleanup on shutdown (delete cache to stop billing)
     atexit.register(delete_rule_cache)
 
-    print("DupCheck backend running on http://localhost:8000")
+    print("DupCheck backend running on https://dupcheck.duckdns.org")
     app.run(host="0.0.0.0", port=8000, debug=True)
