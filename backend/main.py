@@ -425,7 +425,7 @@ To handle messy marketplace seller-submitted data, apply the following "common s
   * Tier 3 (Logistics/Marketing Noise): "Is Assembly Required", assembly instructions, Assembled Product dimensions (Length, Width, Height, Weight), Bulk Size, target audience, subjective benefits (e.g. "Hair Product Form" cream vs liquid, or "Hair Type" fine vs damaged). Completely IGNORE discrepancies in Tier 3 attributes. Do NOT flag 'Not sure bad data' or 'Not duplicate' based on Tier 3 differences.
 - VISUAL GROUNDING: If the primary product images are identical, you must maintain a "Duplicate" decision unless there is a clear, un-ignorable mismatch in a Tier 1 Core Identity attribute (different Model Numbers, or different Capacity). HOWEVER, for products featuring printed artwork, graphics, or painted scenes (e.g., printed lanterns, decorative items), you MUST perform a strict micro-level visual comparison of the artwork itself (e.g., character poses, direction, background elements, specific graphic designs). If the artwork/graphic differs in ANY way, the images are NOT identical, and you must flag it as 'Not duplicate'.
 - DATA ASYMMETRY TOLERANCE: Missing attributes (e.g., `-` or `None` on one side but present on the other) are data gaps, not contradictions. Never flag "Not sure bad data" or "Not duplicate" based on missing data.
-- ACTION HIERARCHY OVERRIDE: If there is clear proof that the items are variants or completely different (e.g., different Model Numbers, different Native Resolutions), choose "Not duplicate". Choosing "Not duplicate" overrides any minor "Not sure bad data" triggers.
+- ACTION HIERARCHY OVERRIDE: If there is clear proof that the items are variants or completely different (e.g., different Model Numbers, different Native Resolutions, or their primary product images are clearly different visually), choose "Not duplicate". Choosing "Not duplicate" based on explicit visual differences OVERRIDES any "Not sure bad data" triggers, including vertical check contradictions.
 
 Respond with JSON only (no markdown, no backticks):
 {
@@ -579,6 +579,7 @@ async def process_batch_analysis(products):
         cardinal_prompt += (
             f"• SPECIAL RULE FOR EXACTLY 2 PRODUCTS:\n"
             f"  - If ANY ONE of the 2 products evaluates to 'Not sure bad data' in the vertical check, you MUST classify ALL of them as 'Not sure bad data' in horizontal clustering.\n"
+            f"  - EXCEPTION: If the images of the 2 products are clearly different visually (e.g., different shapes, colors, or structural designs), you MUST force mark them as 'Not duplicate', completely overriding the Bad Data rule above.\n"
             f"  - If they are duplicates, classify the cluster as 'Duplicate'.\n"
             f"  - Otherwise, use the standard rules.\n"
         )
