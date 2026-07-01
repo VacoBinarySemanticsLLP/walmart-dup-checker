@@ -437,6 +437,161 @@ To handle messy marketplace seller-submitted data, apply the following "common s
 - DATA ASYMMETRY TOLERANCE: Missing attributes (e.g., `-` or `None` on one side but present on the other) are data gaps, not contradictions. Never flag "Not sure bad data" or "Not duplicate" based on missing data.
 - ACTION HIERARCHY OVERRIDE: If there is clear proof that the items are variants or completely different (e.g., different Model Numbers, different Native Resolutions, or their primary product images are clearly different visually), choose "Not duplicate". Choosing "Not duplicate" based on explicit visual differences OVERRIDES any "Not sure bad data" triggers, including vertical check contradictions.
 
+═══════════════════════════════════════════════════════════════
+CORRECTION RULES — DECISION LOGIC OVERRIDES
+Apply these rules IN ORDER. They override general attribute comparison logic.
+First matching rule wins.
+═══════════════════════════════════════════════════════════════
+PRIORITY ORDER (updated):
+1. Images clearly different → DIFFERENT
+2. Both GTINs have ALL same internal contradictions + images identical
+   → DUPLICATE (applies even if contradictions are multiple/severe)  ← UPDATED
+3. Genuine valid size difference → NOT DUPLICATE
+4. Missing warranty / compatibility / quantity (one-sided) → NSBD
+5. Size has no valid unit → BAD DATA
+6. SET product with count mismatch + description states set clearly
+   → Ignore count mismatch, continue evaluation  ← ADD
+7. Title marketing language contradicts color/material
+   BUT attribute + image agree → Ignore title, use attribute + image  ← ADD
+8. 10x size difference between description and attribute → IGNORE (unit format)
+9. Junk info present → IGNORE, re-evaluate without it
+10. Brand difference → IGNORE
+11. Near-match color names → Treat as SAME  ← ADD
+12. Color in set context or Multicolor with visible colors → NOT a contradiction
+13. Internal description conflicts only → DUPLICATE if core attributes match
+RULE 1: JUNK INFORMATION — IGNORE
+If title or image contains junk, filler, or irrelevant text, discard it entirely.
+Do NOT use junk content to trigger Bad Data or NSBD.
+If all essential attributes are valid and consistent → proceed with normal decision.
+
+RULE 2: SIZE HANDLING
+  2a. SIZE WITH NO VALID UNIT OR MEASUREMENT:
+      If a size value exists but has no proper unit (e.g., no cm/in/mm/ft/oz/g/etc.),
+      treat it as MISSING information → mark as "Not sure bad data", NOT "Not duplicate".
+  2b. SIZE ORDER DOES NOT MATTER:
+      "10x5" and "5x10" are the SAME. Do not flag dimensional order differences as a discrepancy.
+  2c. GENUINE SIZE DIFFERENCE ACROSS GTINs:
+      If size attributes are clearly and validly different across GTINs → "Not duplicate".
+      Do not override this with other matching attributes.
+
+RULE 3: ONE-SIDED OR MISSING CRITICAL INFORMATION → NSBD
+If any of the following is present on only ONE GTIN, or is entirely absent on either:
+  - Warranty information
+  - Compatibility information
+  - Quantity per pack
+→ Decision MUST be "Not sure bad data" (NSBD), regardless of other matching attributes.
+Do NOT call it "Not duplicate" or "Duplicate" in these cases.
+
+RULE 4: BRAND — DO NOT USE AS A DECIDING FACTOR
+Ignore brand differences entirely when comparing GTINs.
+If all other essential attributes match → proceed as "Duplicate".
+
+RULE 5: IMAGE COMPARISON — HIGHEST PRIORITY
+If main images are clearly and visually different from each other:
+  → Decision is "Not duplicate", regardless of attribute similarity.
+  → Do NOT let attribute matches, vertical discrepancy, or weight differences override this.
+Vertical discrepancy alone is NEVER a reason to mark as different — always ignore vertical discrepancy.
+
+RULE 6: COLOR HANDLING
+  6a. COLOR IN A SET/MULTI-ITEM CONTEXT:
+      If a color (e.g., silver, blue) appears as part of a set or bundle,
+      it is NOT a color contradiction even if the main label says multicolor.
+      If all other attributes match → "Duplicate".
+  6b. NON-SPECIFIC COLOR IN NATURAL OR VARIABLE PRODUCTS (e.g., plants, animals):
+      If secondary images show bulk/variety specimens with no single identifiable color
+      → mark as "Not sure bad data", NOT "Not duplicate".
+  6c. COLOR VISUALLY PRESENT IN IMAGE:
+      If actual_color attribute says "white" (or any color) and the main image appears multicolor,
+      but that color IS visibly present somewhere in the image alongside others
+      → this is NOT a contradiction. Do not mark as "Not sure bad data" for this reason alone.
+
+### RULE 6 — ADD 6d: MULTICOLOR IS NOT A CONTRADICTION WITH A SINGLE COLOR
+If actual_color or color attribute is "Multicolor" and the image shows
+one dominant color PLUS any other colors (LEDs, accents, trim, lighting effects)
+→ NOT a contradiction. Multicolor is valid when multiple colors are visible anywhere.
+Only flag as contradiction if image shows strictly one solid color
+AND absolutely no other colors exist in the product or its components.
+
+RULE 7: INTERNAL DESCRIPTION-ATTRIBUTE CONFLICTS
+If there is a conflict between description text and attribute values within a single GTIN,
+but the actual product information across BOTH GTINs is otherwise the same
+→ Decision is "Duplicate", NOT "Not sure bad data".
+Internal formatting or copy inconsistency alone is not sufficient for Bad Data.
+
+### RULE 8: SYMMETRIC INTERNAL CONTRADICTIONS — IDENTICAL IMAGES → DUPLICATE
+If BOTH GTINs share the SAME type of internal contradiction
+(e.g., both have color vs image mismatch, both have description size vs
+attribute size mismatch of the same pattern),
+AND the main images of both GTINs are visually IDENTICAL
+→ Mark as DUPLICATE.
+Shared contradictions across both GTINs indicate a systemic data entry issue,
+NOT a product difference.
+Do NOT apply NSBD solely because both products individually have
+the same internal data issues.
+
+---
+
+### RULE 9: SIZE — 10X UNIT FORMAT INCONSISTENCY IS NOT A DISCREPANCY
+If a size value in description (e.g., 89*69*89) and size value in attribute
+(e.g., 8.9X6.9X8.9CM) differ by exactly 10x across all dimensions,
+treat them as the SAME measurement in different unit notations (mm vs cm).
+This is a formatting inconsistency in copy, NOT a real size discrepancy.
+Do NOT flag as bad data based on this alone.
+
+---
+### RULE 10: MULTIPLE SHARED CONTRADICTIONS — STILL DUPLICATE IF IMAGES IDENTICAL
+Rule 8 applies regardless of HOW MANY contradictions are shared.
+If every identified internal contradiction (color, count, material, size, etc.)
+exists on BOTH GTINs — not just one GTIN —
+AND main images are visually identical
+→ Mark as DUPLICATE.
+The number of shared contradictions does NOT override this.
+Quantity of shared issues only confirms a systemic catalog entry problem,
+NOT a product difference.
+Do NOT escalate to NSBD simply because there are multiple types
+of shared bad data.
+
+---
+
+### RULE 11: SET / BUNDLE PRODUCTS — COUNT ATTRIBUTE MISMATCH
+If the product title OR description explicitly identifies the product as a
+SET or BUNDLE with a specific stated quantity
+(e.g., "12 Pairs Earrings Sets", "6-Pack", "Set of 4"):
+  - Trust the description's stated quantity as ground truth for set size
+  - Do NOT flag Total Count or Count Per Pack discrepancy as bad data
+    when those attributes clearly reflect a different counting unit
+    (e.g., 2 = earring types per pair, while description says 12 pairs total)
+  - If BOTH GTINs have the same count mismatch pattern
+    → systemic catalog issue, not a differentiating factor
+  - Only flag count as bad data if the SET NATURE of the product
+    is itself unclear or missing
+
+---
+
+### RULE 12: TITLE MARKETING LANGUAGE — ATTRIBUTE + IMAGE AGREEMENT OVERRIDES TITLE
+If the product title contains marketing/descriptive terms
+(e.g., "14K Gold Plated", "Heavy Duty", "Premium Stainless")
+that conflict with the actual_color or material attribute,
+BUT the actual_color attribute AND main image AGREE with each other:
+  → The title contains marketing or aspirational language
+  → Do NOT flag this as a color or material contradiction
+  → Use actual_color attribute and image as the ground truth pair
+  → Title alone CANNOT trigger bad data when attribute + image are consistent
+
+---
+
+### RULE 13: NEAR-MATCH COLOR NAMES — TREAT AS SAME
+The following color name pairs must be treated as identical:
+  - Silver = Silver Plated = Silver-A = Silver/Steel = Steel
+  - Gold = Gold Plated = 14K Gold = Golden
+  - White = Off-White = Cream = Pearl White
+  - Black = Matte Black = Jet Black
+  - Multicolor = Multi = Multi-Color = Multi-Colored
+Do NOT flag a ❌ contradiction when two values from the same group appear
+across attribute and image verification.
+
+═══════════════════════════════════════════════════════════════
+
 Respond with JSON only (no markdown, no backticks):
 {
   "vertical_checks": [
