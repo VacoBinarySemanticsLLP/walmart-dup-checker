@@ -13,6 +13,7 @@ The output is designed to:
 import json
 import os
 import re
+from system_prompt import TASK_FRAMING, CRITICAL_SOP_RULES, ACTION_HIERARCHY, METADATA_HIERARCHY, CORRECTION_RULES, RESPONSE_SCHEMA
 
 RULES_FILE = os.path.join(os.path.dirname(__file__), "rules.json")
 
@@ -237,12 +238,15 @@ def compile_rules(rules_path: str = RULES_FILE) -> str:
     rules_text = "\n\n".join(compiled_blocks)
     category_index = _build_category_index(rules)
 
-    full_text = f"{SYSTEM_PREAMBLE}\n\n{rules_text}\n{category_index}"
+    # Append static prompt blocks (task framing, critical rules, correction rules, schema, etc.)
+    static_prompt_blocks = "\n\n".join([
+        TASK_FRAMING, CRITICAL_SOP_RULES, ACTION_HIERARCHY,
+        METADATA_HIERARCHY, CORRECTION_RULES, RESPONSE_SCHEMA
+    ])
+
+    full_text = f"{SYSTEM_PREAMBLE}\n\n{rules_text}\n{category_index}\n\n{static_prompt_blocks}"
 
     # ── Ensure we meet the 32K-token minimum ────────────────────────────────
-    # If the compiled text is under the threshold, append the raw JSON as a
-    # supplementary reference section.  This guarantees we hit the minimum
-    # without altering any logic.
     if len(full_text) < MIN_CHAR_TARGET:
         padding_needed = MIN_CHAR_TARGET - len(full_text)
         supplement = "\n\n" + "=" * 80 + "\n"

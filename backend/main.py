@@ -1,153 +1,103 @@
-import os
-import json
-import base64
-import asyncio
-import httpx
-import hashlib
-import io
-import atexit
-import datetime
-import tempfile
-import threading
+import os, json, base64, asyncio, httpx, io, atexit, datetime, threading
 from PIL import Image
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from google import genai
 from google.genai import types
 from dotenv import load_dotenv
-
 from rule_compiler import compile_rules, get_compiled_rules_stats
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  CONFIGURATION
-# ─────────────────────────────────────────────────────────────────────────────
 GEMINI_MODEL = "gemini-2.5-flash"
-CACHE_TTL_HOURS = 4  # How long the context cache stays alive
+CACHE_TTL_HOURS = 4
 
 load_dotenv()
-
 api_key = os.getenv("GEMINI_API_KEY")
 if not api_key:
     print("WARNING: GEMINI_API_KEY not found in .env file")
-
-# Initialize the new google-genai client
 client = genai.Client(api_key=api_key)
 
+_cached_content = None
+_is_rebuilding_cache = False
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  CONTEXT CACHE MANAGEMENT
-# ─────────────────────────────────────────────────────────────────────────────
-_cached_content = None  # Module-level reference to the active cache
-_is_rebuilding_cache = False  # Lock to prevent concurrent background rebuilds
+BASE_GEN_CONFIG = dict(response_mime_type="application/json", temperature=0, seed=42)
 
+def _gen_config(**kw):
+    c = dict(BASE_GEN_CONFIG)
+    c.update(kw)
+    return types.GenerateContentConfig(**c)
+
+def _generate(model, contents, config):
+    return client.models.generate_content(model=model, contents=contents, config=config)
 
 def create_rule_cache():
-    """
-    Compile rules.json into compact text and create a Gemini context cache.
-    This is called ONCE at server startup. The cache persists for CACHE_TTL_HOURS.
-    """
     global _cached_content
-
-    print("\n" + "=" * 60)
-    print("📦 COMPILING RULES & CREATING CONTEXT CACHE...")
-    print("=" * 60)
-
-    # Step 1: Compile rules into compact text
+    print("\n" + "=" * 40)
+    print("COMPILING RULES & CREATING CONTEXT CACHE...")
+    print("=" * 40)
     compiled_rules = compile_rules()
     stats = get_compiled_rules_stats(compiled_rules)
-
-    print(f"  ✅ Compiled rules: {stats['char_count']:,} chars, ~{stats['approx_tokens']:,} tokens")
-    print(f"  ✅ Meets 32K minimum: {stats['meets_32k_minimum']}")
-    print(f"  💰 Est. cache cost: ${stats['estimated_cache_cost_per_hour']}/hour")
-
-    # Step 2: Create the context cache with Gemini
+    print(f"  Rules: {stats['char_count']:,} chars, ~{stats['approx_tokens']:,} tokens | Meets 32K min: {stats['meets_32k_minimum']} | Est. cost: ${stats['estimated_cache_cost_per_hour']}/hr")
     try:
         _cached_content = client.caches.create(
             model=GEMINI_MODEL,
             config=types.CreateCachedContentConfig(
-                contents=[
-                    types.Content(
-                        role="user",
-                        parts=[types.Part.from_text(text=compiled_rules)]
-                    )
-                ],
-                system_instruction=types.Content(
-                    parts=[types.Part.from_text(
-                        text=(
-                            "You are a Walmart product data quality evaluator. "
-                            "The SOP rules provided in the cached context are your ONLY source of truth. "
-                            "When comparing products, find the matching rule by category/product type, "
-                            "check which scenario's conditions apply, and return that scenario's decision. "
-                            "Always respond with valid JSON only — no markdown, no backticks."
-                        )
-                    )]
-                ),
+                contents=[types.Content(role="user", parts=[types.Part.from_text(text=compiled_rules)])],
+                system_instruction=types.Content(parts=[types.Part.from_text(text="You are a Walmart product data quality evaluator. The SOP rules provided in the cached context are your ONLY source of truth. When comparing products, find the matching rule by category/product type, check which scenario's conditions apply, and return that scenario's decision. Always respond with valid JSON only — no markdown, no backticks.")]),
                 ttl=f"{CACHE_TTL_HOURS * 3600}s",
                 display_name="walmart-sop-rules"
             )
         )
-
-        print(f"  ✅ Cache created: {_cached_content.name}")
-        print(f"  ⏰ TTL: {CACHE_TTL_HOURS} hours (expires ~{datetime.datetime.now() + datetime.timedelta(hours=CACHE_TTL_HOURS):%H:%M})")
-        print("=" * 60 + "\n")
-
+        print(f"  Cache created: {_cached_content.name} | TTL: {CACHE_TTL_HOURS}h (expires ~{datetime.datetime.now() + datetime.timedelta(hours=CACHE_TTL_HOURS):%H:%M})")
     except Exception as e:
-        print(f"  ❌ Cache creation FAILED: {e}")
-        print("  ⚠️  Falling back to non-cached mode (rules sent per request)")
-        print("=" * 60 + "\n")
+        print(f"  Cache creation FAILED: {e}")
+        print("  Falling back to non-cached mode (rules sent per request)")
         _cached_content = None
-
+    print("=" * 40 + "\n")
 
 def delete_rule_cache():
-    """Delete the context cache on shutdown to stop billing."""
     global _cached_content
     if _cached_content:
         try:
             client.caches.delete(name=_cached_content.name)
-            print(f"🗑️  Context cache deleted: {_cached_content.name}")
+            print(f"Context cache deleted: {_cached_content.name}")
         except Exception as e:
-            print(f"⚠️  Failed to delete cache (may have expired): {e}")
+            print(f"Failed to delete cache: {e}")
         _cached_content = None
 
+def _safe_text(resp):
+    try:
+        return resp.text
+    except (ValueError, Exception):
+        return None
 
-def get_model():
-    """
-    Return a model reference — cached if available, fallback otherwise.
-    When using the cached model, rules are NOT sent per request.
-    """
-    if _cached_content:
-        return _cached_content.name
-    return None
+def _build_relaxed_safety():
+    cats = ["HARM_CATEGORY_HARASSMENT", "HARM_CATEGORY_HATE_SPEECH", "HARM_CATEGORY_SEXUALLY_EXPLICIT", "HARM_CATEGORY_DANGEROUS_CONTENT", "HARM_CATEGORY_CIVIC_INTEGRITY"]
+    return [types.SafetySetting(category=c, threshold="BLOCK_NONE") for c in cats]
 
+def _send(contents, use_cache=True, relaxed=False):
+    config_kw = dict(BASE_GEN_CONFIG)
+    if relaxed:
+        config_kw["safety_settings"] = _build_relaxed_safety()
+    if use_cache and _cached_content:
+        config_kw["cached_content"] = _cached_content.name
+        return _generate(GEMINI_MODEL, contents, _gen_config(**config_kw))
+    else:
+        compiled = compile_rules()
+        full = [compiled] + contents
+        return _generate(GEMINI_MODEL, full, _gen_config(**config_kw))
 
 def generate_with_cache(contents: list) -> str:
-    """
-    Generate content using the cached context if available.
-    Falls back to sending rules inline if cache is not available.
-    """
     global _cached_content, _is_rebuilding_cache
-    cache_name = get_model()
-
     response = None
-    if cache_name:
-        # Cached mode — rules are already in the cache, just send product data
+    if _cached_content:
         try:
-            response = client.models.generate_content(
-                model=GEMINI_MODEL,
-                contents=contents,
-                config=types.GenerateContentConfig(
-                    cached_content=cache_name,
-                    response_mime_type="application/json",
-                    temperature=0,
-                    seed=42
-                )
-            )
+            response = _send(contents, use_cache=True)
         except Exception as e:
-            if "CachedContent not found" in str(e) or "403" in str(e) or "PERMISSION_DENIED" in str(e):
-                print(f"⚠️  Cache error detected (likely expired): {e}")
-                print("🔄  Falling back to inline rules...")
-                _cached_content = None  # Clear invalid cache
-                
+            estr = str(e)
+            if "CachedContent not found" in estr or "403" in estr or "PERMISSION_DENIED" in estr:
+                print(f"Cache error (likely expired): {e}")
+                print("Falling back to inline rules...")
+                _cached_content = None
                 if not _is_rebuilding_cache:
                     _is_rebuilding_cache = True
                     def rebuild():
@@ -159,553 +109,128 @@ def generate_with_cache(contents: list) -> str:
                     threading.Thread(target=rebuild, daemon=True).start()
             else:
                 raise e
-
     if not response:
-        # Fallback — send compiled rules inline (more expensive)
-        compiled_rules = compile_rules()
-        full_contents = [compiled_rules] + contents
-        response = client.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=full_contents,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                temperature=0,
-                seed=42
-            )
-        )
+        response = _send(contents, use_cache=False)
 
-    # Log cache usage stats
     if hasattr(response, 'usage_metadata') and response.usage_metadata:
         um = response.usage_metadata
-        cached_tokens = getattr(um, 'cached_content_token_count', 0) or 0
-        total_input = getattr(um, 'prompt_token_count', 0) or 0
-        output_tokens = getattr(um, 'candidates_token_count', 0) or 0
-        print(f"  📊 Tokens — Input: {total_input} (cached: {cached_tokens}) | Output: {output_tokens}")
-        if cached_tokens > 0:
-            savings_pct = (cached_tokens / total_input * 100) if total_input > 0 else 0
-            print(f"  💰 Cache hit: {savings_pct:.1f}% of input tokens served from cache")
-
-    # Safely extract text — response.text raises ValueError when Gemini blocks
-    # the response (safety filter, recitation, etc.), which shows as Output: 0.
-    def _safe_text(resp):
-        try:
-            return resp.text
-        except (ValueError, Exception):
-            return None
+        ct = getattr(um, 'cached_content_token_count', 0) or 0
+        ti = getattr(um, 'prompt_token_count', 0) or 0
+        ot = getattr(um, 'candidates_token_count', 0) or 0
+        print(f"  Tokens — Input: {ti} (cached: {ct}) | Output: {ot}")
+        if ct > 0 and ti > 0:
+            print(f"  Cache hit: {ct / ti * 100:.1f}% of input from cache")
 
     text = _safe_text(response)
     if text is not None:
         return text
 
-    # ── Retry with relaxed safety settings ───────────────────────────────────
-    # Gemini RECITATION / SAFETY blocks fire when products have identical titles
-    # or when content resembles training data. Retrying with BLOCK_NONE bypasses
-    # the filter for product comparison tasks which are never harmful.
     finish_reason = "UNKNOWN"
     try:
         finish_reason = response.candidates[0].finish_reason.name
     except Exception:
         pass
-    print(f"  ⚠️  Gemini blocked response (finish_reason={finish_reason}). Retrying with relaxed safety settings...")
+    print(f"Gemini blocked (finish_reason={finish_reason}). Retrying with relaxed safety...")
 
-    relaxed_safety = [
-        types.SafetySetting(category="HARM_CATEGORY_HARASSMENT",        threshold="BLOCK_NONE"),
-        types.SafetySetting(category="HARM_CATEGORY_HATE_SPEECH",       threshold="BLOCK_NONE"),
-        types.SafetySetting(category="HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold="BLOCK_NONE"),
-        types.SafetySetting(category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="BLOCK_NONE"),
-        types.SafetySetting(category="HARM_CATEGORY_CIVIC_INTEGRITY",   threshold="BLOCK_NONE"),
-    ]
-
-    cache_name = get_model()
     try:
-        if cache_name:
-            retry_response = client.models.generate_content(
-                model=GEMINI_MODEL,
-                contents=contents,
-                config=types.GenerateContentConfig(
-                    cached_content=cache_name,
-                    safety_settings=relaxed_safety,
-                    response_mime_type="application/json",
-                    temperature=0,
-                    seed=42
-                )
-            )
-        else:
-            compiled_rules = compile_rules()
-            full_contents = [compiled_rules] + contents
-            retry_response = client.models.generate_content(
-                model=GEMINI_MODEL,
-                contents=full_contents,
-                config=types.GenerateContentConfig(
-                    safety_settings=relaxed_safety,
-                    response_mime_type="application/json",
-                    temperature=0,
-                    seed=42
-                )
-            )
-
-        retry_text = _safe_text(retry_response)
+        retry = _send(contents, use_cache=bool(_cached_content), relaxed=True)
+        retry_text = _safe_text(retry)
         if retry_text:
-            print(f"  ✅ Retry with relaxed safety succeeded.")
+            print("Retry with relaxed safety succeeded.")
             return retry_text
     except Exception as retry_err:
-        print(f"  ❌ Retry also failed: {retry_err}")
+        print(f"Retry also failed: {retry_err}")
 
-    print(f"  ❌ Gemini returned no text even after retry. Finish reason was: {finish_reason}")
     raise Exception(f"Gemini API blocked response or returned no text. Finish reason: {finish_reason}")
 
-
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  IMAGE FETCHING  (unchanged from original)
-# ─────────────────────────────────────────────────────────────────────────────
 async def fetch_image(client_http: httpx.AsyncClient, url: str) -> dict:
     try:
-        response = await client_http.get(url, timeout=10.0)
-        response.raise_for_status()
-        raw_bytes = response.content
-        source_format = "ORIGINAL"
-
-        original_size_kb = len(raw_bytes) / 1024
-        img = Image.open(io.BytesIO(raw_bytes))
-        original_dims = img.size
+        resp = await client_http.get(url, timeout=10.0)
+        resp.raise_for_status()
+        raw = resp.content
+        orig_kb = len(raw) / 1024
+        img = Image.open(io.BytesIO(raw))
+        orig_dims = img.size
         img.thumbnail((600, 600), Image.LANCZOS)
         new_dims = img.size
-        output = io.BytesIO()
-        img.save(output, format='WEBP', quality=85, method=6)
-        output.seek(0)
-        final_bytes = output.read()
-        final_size_kb = len(final_bytes) / 1024
-        reduction_pct = (1 - final_size_kb / original_size_kb) * 100
-        print(
-            f"🖼️  [{source_format}] "
-            f"{original_dims[0]}x{original_dims[1]}px → {new_dims[0]}x{new_dims[1]}px (color WebP) | "
-            f"Downloaded: {original_size_kb:.1f} KB  →  Final: {final_size_kb:.1f} KB  "
-            f"({reduction_pct:.1f}% reduced)"
-        )
-        return {
-            "mime_type": "image/webp",
-            "data": base64.b64encode(final_bytes).decode('utf-8')
-        }
+        buf = io.BytesIO()
+        img.save(buf, format='WEBP', quality=85, method=6)
+        buf.seek(0)
+        final = buf.read()
+        final_kb = len(final) / 1024
+        pct = (1 - final_kb / orig_kb) * 100
+        print(f"  Image {url.split('/')[-1][:30]}: {orig_dims[0]}x{orig_dims[1]}px->{new_dims[0]}x{new_dims[1]}px {orig_kb:.1f}KB->{final_kb:.1f}KB ({pct:.1f}% reduced)")
+        return {"mime_type": "image/webp", "data": base64.b64encode(final).decode('utf-8')}
     except Exception as e:
         print(f"Error fetching image {url}: {e}")
         return None
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  PROMPTS  (streamlined — rules are in the cache, prompts only define TASK)
-# ─────────────────────────────────────────────────────────────────────────────
-
-SINGLE_ANALYSIS_PROMPT_TEMPLATE = """
-TASK: Analyze this single product for internal data consistency (vertical check).
-
-Product Title: {title}
-Text Attributes: {attributes}
-
-INSTRUCTIONS:
-1. Detect the product category from title + attributes
-2. Find matching SOP rules from the cached rules for this category
-3. Extract specs from the provided images (OCR) — focus on primary attributes for the category
-4. Compare extracted image specs against the text attributes
-5. Flag contradictions ONLY (not missing data)
-
-Use the SOP rules from the cached context to determine which attributes matter for this category
-and which should be ignored.
-
-Respond with JSON only (no markdown, no backticks):
-{{
-  "detected_category": "string",
-  "matched_sop_rules": ["list of scenario_ids that were consulted"],
-  "primary_attributes_checked": ["list of attribute names relevant for this category"],
-  "extracted_image_specs": "string (concise summary of specs from images, or 'None')",
-  "hasInconsistency": boolean,
-  "inconsistencies": [
-    {{
-      "field": "string",
-      "imageValue": "string",
-      "textValue": "string",
-      "reason": "string"
-    }}
-  ]
-}}
-"""
-
-
-BATCH_ANALYSIS_PROMPT = """
-TASK: Perform a full duplicate/non-duplicate/bad-data analysis on the following products.
-
-INSTRUCTIONS:
-1. PHASE 1 (Extraction & Vertical Check): For each product individually, extract image specs via OCR and check for contradictions against text attributes. If there are unresolved contradictions or missing data that prevents comparison, flag it as "Not sure bad data".
-2. PHASE 2 (Horizontal Check - Duplicate): For products that pass the vertical check, compare them against each other. If every critical attribute matches after applying SOP rules, mark them as "Duplicate".
-3. PHASE 3 (Horizontal Check - Non-Duplicates): If the products are NOT duplicates, evaluate them for the following cases:
-   - "Not duplicate warranty": if they differ only by warranty.
-   - "Not duplicate compatibility": if they differ by vehicle/device compatibility.
-   - "Not duplicate": for all other variant or non-matching product differences.
-
-Before performing ANY comparison, independently extract the following attributes from BOTH the structured text and the product images.
-
-Extract each attribute separately. Do NOT combine or normalize different attributes into a single value.
-
-- Brand
-- Product Name
-- Model Number
-- Size / Dimensions
-- Capacity
-- Weight
-- Color
-- Finish
-- Material
-- Flavor
-- Scent
-- Dosage Strength
-- Formulation
-- Package Type
-- Package Count
-- Units Per Package
-- Total Units
-- Compatibility
-- Warranty
-
-Rules:
-
-- Keep Package Count, Units Per Package, and Total Units as separate attributes.
-- Never merge multiple quantity attributes into a single "Count".
-- Preserve packaging hierarchy exactly as shown.
-- If an attribute cannot be confidently extracted from either text or image, return it as "Unknown". Never infer missing values.
-
-CRITICAL RULES FROM SOP:
-- Attributes listed as "Ignore Attributes" in matching SOP rules must NOT affect decisions
-- Do not flag 'Bad Data' just because a specific attribute is missing (-) if that information is clearly stated in the title, description, or under a synonymous attribute name.
-- When a rule specifies visual_check=REQUIRED, images MUST be verified
-- COUNT VERIFICATION (ALL CATEGORIES): Pay extremely close attention to the Unit of Measurement (UOM) in images and text. Distinguish between 'Package-Level Count' (e.g., 1 Box, 1 Case), 'Item-Level Count' (e.g., 60 Pills, 80 Pellets), and 'Weight/Volume' (e.g., 0.3 Ounces, 50ml). Do NOT flag different types of measurements as contradictions (e.g., 'Net Content: 0.3 Ounces' vs 'Count Per Pack: 80'). If an attribute like 'Total Count' or 'Multipack Quantity' is '1', it almost always refers to '1 retail package being sold'. Do NOT flag 'Total Count: 1' as a contradiction against 'Count Per Pack: 80' or a product image showing '80 Ct'. As long as the measurements describe different aspects (weight vs count vs packages), it is a PERFECT match, not Bad Data.
-- PACKAGING HORIZONTAL RULES: A 2x30 configuration (2 bottles of 30) is NOT a duplicate of a 1x60 configuration (1 bottle of 60). Even if total units are the same, different package structures must be clustered separately (e.g., 'Not duplicate').
-- PACKAGING TYPE RULES: Pay attention to the physical container type. A bottle is NOT a duplicate of a blister pack, and a blister pack is NOT a duplicate of a strip. Cluster these separately.
-- COMPATIBILITY OVERRIDES BAD DATA: If ANY attribute (including 'Actual Color', 'Color', 'Style', 'Model', 'Size', 'Theme', or any other field) contains vehicle, device, or application compatibility data (e.g. 'For 2022-2023 Chevrolet Silverado', 'For iPhone 15 Pro', 'Fits Model XYZ-100'), do NOT flag this as a contradiction or 'Bad Data' in the vertical check, regardless of which field the compatibility data appears in. Treat it as valid compatibility information.
-- DIMENSIONS & WEIGHT ARE JUNK DATA: 'Assembled Product Width', 'Assembled Product Length', 'Assembled Product Height', 'Assembled Product Weight' (and variations like 'Width', 'Length', 'Height', 'Weight'), 'Product Net Content Parent', and 'Product Net Content' MUST be completely ignored in all cases. Do not check, extract, or flag contradictions based on them; treat them entirely as junk data. Note: 'Product Net Content' and 'Product Net Content Parent' are packaging quantity fields (e.g. "1 Piece") — if a seller has entered a size-like value such as "1 Inch" into these fields, it is a data entry error and must be ignored entirely.
-- SIZE RANGE TOLERANCE: When a product title or attribute contains a size RANGE (e.g., "16-22 inch", "30-40 cm", "S-XL"), any specific size value found in another attribute, the image, or OCR that falls WITHIN or reasonably near that range is NOT a contradiction. Example: title says "16-22 inch" and the Theme attribute says "16 inch" and the image shows "20 inch" — all three are consistent because 16 and 20 are both within the 16-22 range. Do NOT flag bad data when a specific value is within a stated range. Treat the range as a set of valid values, not a conflicting measurement.
-- METRIC/IMPERIAL EQUIVALENCE: Metric and imperial size values that refer to the same measurement MUST be treated as identical. Use the conversion 1 inch = 2.54 cm with a rounding tolerance of ±1 inch (±2.54 cm). Examples: 40 CM ≈ 16 inches, 50 CM ≈ 20 inches, 30 CM ≈ 12 inches. If two size values differ only by unit of measurement and are equivalent within this tolerance, they are NOT a contradiction. Do NOT flag 'Not sure bad data' when a metric value and an imperial value describe the same physical size. This applies across all fields — title, attributes, and image OCR.
-- MISPLACED SIZE DATA IN NON-SIZE FIELDS: Sellers frequently enter size/dimension information into the wrong attribute field. For decorative, seasonal, and home décor items (wreaths, ornaments, lanterns, etc.), if a non-size attribute such as 'Theme', 'Pattern', 'Style', 'Light Bulb Color', or similar contains a value matching the pattern '[number] CM / [number] inch', '[number]"', '[number] inch', or '[number] cm', treat it as a MISPLACED SIZE DESCRIPTOR — seller data entry error, not a thematic value. Do NOT use this misplaced size data to contradict the product title, other size attributes, or image measurements. Completely ignore it as a source of contradiction.
-- LAZY METADATA & PLACEHOLDERS: Sellers frequently use lazy generic terms. The LAZY METADATA rule applies when the text attribute contains ANY of these recognized generic placeholders: "As Picture", "As Shown", "Other", "Multicolor", "Standard", "Default", "N/A", "NA", "Various", "See Description", "Same as Image", "Not Specified", "Unspecified", "See Image", "Mixed", or "-" (blank/dash). In these cases, you MUST assume they agree with the visual evidence (e.g., 'N/A' does NOT contradict any specific value; 'Various' does NOT contradict a specific value in an image; 'Other' does NOT contradict 'Clear'). Furthermore, if text is missing (-) and OCR finds the value (e.g., a Model Number), this is data enrichment, NOT a contradiction. IMPORTANT LIMIT: This rule does NOT apply when the text attribute contains a specific, definitive value (e.g., 'Yellow', 'Red', 'Blue') — a specific text value is always subject to visual verification.
-- COLOR CONTRADICTION RULE (VERTICAL CHECK): When a SOP rule lists 'Color' as a core attribute under test for a category (e.g., Bedding, Fashion, Home), you MUST verify each product's Color attribute against the product image independently in the vertical check. If the text attribute states a specific, definitive color (e.g., 'Yellow') but the product image clearly shows a different color or a multicolor/mixed design, this is a REAL contradiction and must be flagged as 'Not sure bad data' for that product. Do NOT treat a specific wrong color as a placeholder. Exception: if the text says 'Multicolor' and the image is multicolor, that is consistent — no contradiction. Exception: if compatibility data is stored in the Color field (e.g., vehicle make/model), apply the COMPATIBILITY OVERRIDES BAD DATA rule instead. Exception: ACTUAL COLOR OVERRIDES COLOR — If a product has BOTH a 'Color' attribute AND an 'Actual Color' attribute, treat 'Actual Color' as the authoritative color source and verify the image against 'Actual Color' ONLY. The 'Color' attribute is a seller-supplied general label (often a vague or approximate term like 'Beige', 'Silver', 'Grey') and MUST NOT be independently cross-checked against the image or against 'Actual Color'. If 'Actual Color' is consistent with the image (e.g., 'Titanium Silverblue' matches a light silver/blueish-grey phone), the product passes the vertical color check — do NOT flag it as 'Not sure bad data' solely because 'Color' appears to differ from 'Actual Color' or the image. The perceived surface-level mismatch between a vague 'Color' and a precise manufacturer 'Actual Color' is a known data enrichment pattern, not a contradiction.
-- SOP RULE MATCHING — PRODUCT TYPE MUST MATCH: When consulting SOP rules from the cached context, BOTH the category AND the product type must closely match the product being evaluated. NEVER apply a rule for one product type to a completely different product type within the same category (e.g., do NOT apply a 'USB Charger' rule to a 'TV Remote'; do NOT apply a 'Ketchup' rule to a 'Tea' product; do NOT apply a 'Sand Toys' rule to a 'Pool Float'). If only the category matches but the product type is clearly different, treat the rule as non-applicable and do NOT cite it as the matched_sop_rule. When no exact SOP rule match exists, apply the GENERALIZED METADATA NOISE & TRUTH HIERARCHY instead and cite no matched rule.
-- WARRANTY TEXT IN DESCRIPTION IS NOT A CONTRADICTION: The 'Has Written Warranty' structured attribute and any warranty mention found in the product title, short description, or long description are TWO DIFFERENT data sources. Sellers commonly write warranty language in free-text descriptions (e.g., "one-year warranty", "12-month guarantee", "lifetime warranty") while leaving the structured 'Has Written Warranty' attribute as 'No' or blank. This is a well-known seller data entry pattern — NOT a contradiction. NEVER flag 'Not sure bad data' based solely on a mismatch between the 'Has Written Warranty' attribute value and warranty mentions anywhere in description text fields.
-- TOYS CATEGORY — AGE ATTRIBUTES ARE IGNORED: For ALL products in the Toys category (including pool toys, floats, action figures, building sets, sand toys, bath toys, dolls, etc.), the 'Minimum Recommended Age' and 'Maximum Recommended Age' attributes MUST be completely ignored for both the vertical check AND the horizontal duplicate/non-duplicate determination. These fields are frequently entered incorrectly by sellers and do NOT distinguish between product variants. Never flag 'Not sure bad data' or 'Not duplicate' based on age attribute differences for Toys products.
-- CLUSTERING LOGIC - IDENTICALS: Group identical/duplicate products together in the SAME cluster.
-- CLUSTERING LOGIC - VARIANTS & UNIQUE: If a product is a variant, a completely unique item, or "Not duplicate", it MUST be placed in its OWN SEPARATE, STANDALONE cluster. Do NOT group variants or non-duplicates together with the primary product or with each other. Each gets its own cluster.
-- CLUSTERING LOGIC - BAD DATA: Bad data products MUST be separated into their own individual clusters, never merged with any other product.
-- CLUSTERING LOGIC - DIFFERENT ATTRIBUTES: Different sizes, model numbers, finish types, or compatibilities = SEPARATE clusters always.
-- You MUST assign exactly ONE of the following official actions to each cluster:
-  ACTION SELECTION HIERARCHY (MANDATORY)
-
-Follow this exact required flow when assigning actions:
-
-STEP 1: "Not sure bad data" (Vertical Check)
-   Evaluate this FIRST. Use if:
-   - Required attributes cannot be verified.
-   - Image and text contain unresolved contradictions.
-   - OCR evidence is insufficient for required verification.
-   - Critical product information is missing and prevents reliable comparison.
-   ⚠ OVERRIDE CHECK (MANDATORY before finalizing): Before you output 'Not sure bad data', ask:
-     "Are the product images clearly and visually different?" If YES — the products are different
-     items and you MUST choose 'Not duplicate' instead. Clear visual difference between products
-     ALWAYS overrides a bad data flag. See ACTION HIERARCHY OVERRIDE below.
-
-STEP 2: "Duplicate" (Horizontal Check)
-   If it is NOT bad data, evaluate for Duplicate.
-   Use when every critical attribute matches after applying SOP ignore rules.
-
-STEP 3: Evaluate all other cases (If NOT Duplicate)
-   If products are not duplicates, you MUST assign one of the following:
-
-   - "Not duplicate warranty"
-     Use when warranty is the only material differentiator and SOP specifies warranty as variant-driving.
-
-   - "Not duplicate compatibility"
-     Use when compatibility differs (vehicle, device, model, application, etc.), regardless of other variant differences or missing data.
-
-   - "Not duplicate"
-     Use for all other cases where products belong to different families, or are variants differing in one or more variant-driving attributes not covered above.
-
-GENERALIZED METADATA NOISE & TRUTH HIERARCHY:
-To handle messy marketplace seller-submitted data, apply the following "common sense" hierarchy over the raw rules:
-- CORE IDENTITY TIERS:
-  * Tier 1 (Core Identity): Brand, capacity/volume (e.g. 32oz, 1 Liter), model number, and packaging structures (e.g. 1-pack vs 2-pack). Discrepancies here are critical and drive "Not duplicate" decisions.
-  * Tier 2 (Visual Specs): Color, Finish, Material. If these differ, use the Image as the absolute tie-breaker. If the image shows them as identical, ignore the text discrepancy (e.g., ignore 'Multicolor' vs 'Matte Black' if visually identical).
-  * Tier 3 (Logistics/Marketing Noise): "Is Assembly Required", assembly instructions, Assembled Product dimensions (Length, Width, Height, Weight), Bulk Size, target audience, subjective benefits (e.g. "Hair Product Form" cream vs liquid, or "Hair Type" fine vs damaged), 'Fabric Care Instructions', 'Fiction/Nonfiction' classification, 'Pant Rise', 'Age Group', 'Season', 'Clothing Size Group', 'Has Written Warranty' (the structured attribute field — warranty text in description is marketing copy and does not override this), 'Academic Institution' (when misused as a clothing size field), 'Minimum Recommended Age' and 'Maximum Recommended Age' (especially for Toys), 'Condition' (New vs New — identical values are never contradictions). Completely IGNORE discrepancies in Tier 3 attributes. Do NOT flag 'Not sure bad data' or 'Not duplicate' based on Tier 3 differences.
-- VISUAL GROUNDING: If the primary product images are identical, you must maintain a "Duplicate" decision unless there is a clear, un-ignorable mismatch in a Tier 1 Core Identity attribute (different Model Numbers, or different Capacity). HOWEVER, for products featuring printed artwork, graphics, or painted scenes (e.g., printed lanterns, decorative items), you MUST perform a strict micro-level visual comparison of the artwork itself (e.g., character poses, direction, background elements, specific graphic designs). If the artwork/graphic differs in ANY way, the images are NOT identical, and you must flag it as 'Not duplicate'.
-- DATA ASYMMETRY TOLERANCE: Missing attributes (e.g., `-` or `None` on one side but present on the other) are data gaps, not contradictions. Never flag "Not sure bad data" or "Not duplicate" based on missing data.
-- ACTION HIERARCHY OVERRIDE: If there is clear proof that the items are variants or completely different (e.g., different Model Numbers, different Native Resolutions, or their primary product images are clearly different visually), choose "Not duplicate". Choosing "Not duplicate" based on explicit visual differences OVERRIDES any "Not sure bad data" triggers, including vertical check contradictions.
-
-═══════════════════════════════════════════════════════════════
-CORRECTION RULES — DECISION LOGIC OVERRIDES
-Apply these rules IN ORDER. They override general attribute comparison logic.
-First matching rule wins.
-═══════════════════════════════════════════════════════════════
-PRIORITY ORDER (updated):
-1. Images clearly different → DIFFERENT
-2. Both GTINs have ALL same internal contradictions + images identical
-   → DUPLICATE (applies even if contradictions are multiple/severe)  ← UPDATED
-3. Genuine valid size difference → NOT DUPLICATE
-4. Missing warranty / compatibility / quantity (one-sided) → NSBD
-5. Size has no valid unit → BAD DATA
-6. SET product with count mismatch + description states set clearly
-   → Ignore count mismatch, continue evaluation  ← ADD
-7. Title marketing language contradicts color/material
-   BUT attribute + image agree → Ignore title, use attribute + image  ← ADD
-8. 10x size difference between description and attribute → IGNORE (unit format)
-9. Junk info present → IGNORE, re-evaluate without it
-10. Brand difference → IGNORE
-11. Near-match color names → Treat as SAME  ← ADD
-12. Color in set context or Multicolor with visible colors → NOT a contradiction
-13. Internal description conflicts only → DUPLICATE if core attributes match
-RULE 1: JUNK INFORMATION — IGNORE
-If title or image contains junk, filler, or irrelevant text, discard it entirely.
-Do NOT use junk content to trigger Bad Data or NSBD.
-If all essential attributes are valid and consistent → proceed with normal decision.
-
-RULE 2: SIZE HANDLING
-  2a. SIZE WITH NO VALID UNIT OR MEASUREMENT:
-      If a size value exists but has no proper unit (e.g., no cm/in/mm/ft/oz/g/etc.),
-      treat it as MISSING information → mark as "Not sure bad data", NOT "Not duplicate".
-  2b. SIZE ORDER DOES NOT MATTER:
-      "10x5" and "5x10" are the SAME. Do not flag dimensional order differences as a discrepancy.
-  2c. GENUINE SIZE DIFFERENCE ACROSS GTINs:
-      If size attributes are clearly and validly different across GTINs → "Not duplicate".
-      Do not override this with other matching attributes.
-
-RULE 3: ONE-SIDED OR MISSING CRITICAL INFORMATION → NSBD
-If any of the following is present on only ONE GTIN, or is entirely absent on either:
-  - Warranty information
-  - Compatibility information
-  - Quantity per pack
-→ Decision MUST be "Not sure bad data" (NSBD), regardless of other matching attributes.
-Do NOT call it "Not duplicate" or "Duplicate" in these cases.
-
-RULE 4: BRAND — DO NOT USE AS A DECIDING FACTOR
-Ignore brand differences entirely when comparing GTINs.
-If all other essential attributes match → proceed as "Duplicate".
-
-RULE 5: IMAGE COMPARISON — HIGHEST PRIORITY
-If main images are clearly and visually different from each other:
-  → Decision is "Not duplicate", regardless of attribute similarity.
-  → Do NOT let attribute matches, vertical discrepancy, or weight differences override this.
-Vertical discrepancy alone is NEVER a reason to mark as different — always ignore vertical discrepancy.
-
-RULE 6: COLOR HANDLING
-  6a. COLOR IN A SET/MULTI-ITEM CONTEXT:
-      If a color (e.g., silver, blue) appears as part of a set or bundle,
-      it is NOT a color contradiction even if the main label says multicolor.
-      If all other attributes match → "Duplicate".
-  6b. NON-SPECIFIC COLOR IN NATURAL OR VARIABLE PRODUCTS (e.g., plants, animals):
-      If secondary images show bulk/variety specimens with no single identifiable color
-      → mark as "Not sure bad data", NOT "Not duplicate".
-  6c. COLOR VISUALLY PRESENT IN IMAGE:
-      If actual_color attribute says "white" (or any color) and the main image appears multicolor,
-      but that color IS visibly present somewhere in the image alongside others
-      → this is NOT a contradiction. Do not mark as "Not sure bad data" for this reason alone.
-
-### RULE 6 — ADD 6d: MULTICOLOR IS NOT A CONTRADICTION WITH A SINGLE COLOR
-If actual_color or color attribute is "Multicolor" and the image shows
-one dominant color PLUS any other colors (LEDs, accents, trim, lighting effects)
-→ NOT a contradiction. Multicolor is valid when multiple colors are visible anywhere.
-Only flag as contradiction if image shows strictly one solid color
-AND absolutely no other colors exist in the product or its components.
-
-RULE 7: INTERNAL DESCRIPTION-ATTRIBUTE CONFLICTS
-If there is a conflict between description text and attribute values within a single GTIN,
-but the actual product information across BOTH GTINs is otherwise the same
-→ Decision is "Duplicate", NOT "Not sure bad data".
-Internal formatting or copy inconsistency alone is not sufficient for Bad Data.
-
-### RULE 8: SYMMETRIC INTERNAL CONTRADICTIONS — IDENTICAL IMAGES → DUPLICATE
-If BOTH GTINs share the SAME type of internal contradiction
-(e.g., both have color vs image mismatch, both have description size vs
-attribute size mismatch of the same pattern),
-AND the main images of both GTINs are visually IDENTICAL
-→ Mark as DUPLICATE.
-Shared contradictions across both GTINs indicate a systemic data entry issue,
-NOT a product difference.
-Do NOT apply NSBD solely because both products individually have
-the same internal data issues.
-
----
-
-### RULE 9: SIZE — 10X UNIT FORMAT INCONSISTENCY IS NOT A DISCREPANCY
-If a size value in description (e.g., 89*69*89) and size value in attribute
-(e.g., 8.9X6.9X8.9CM) differ by exactly 10x across all dimensions,
-treat them as the SAME measurement in different unit notations (mm vs cm).
-This is a formatting inconsistency in copy, NOT a real size discrepancy.
-Do NOT flag as bad data based on this alone.
-
----
-### RULE 10: MULTIPLE SHARED CONTRADICTIONS — STILL DUPLICATE IF IMAGES IDENTICAL
-Rule 8 applies regardless of HOW MANY contradictions are shared.
-If every identified internal contradiction (color, count, material, size, etc.)
-exists on BOTH GTINs — not just one GTIN —
-AND main images are visually identical
-→ Mark as DUPLICATE.
-The number of shared contradictions does NOT override this.
-Quantity of shared issues only confirms a systemic catalog entry problem,
-NOT a product difference.
-Do NOT escalate to NSBD simply because there are multiple types
-of shared bad data.
-
----
-
-### RULE 11: SET / BUNDLE PRODUCTS — COUNT ATTRIBUTE MISMATCH
-If the product title OR description explicitly identifies the product as a
-SET or BUNDLE with a specific stated quantity
-(e.g., "12 Pairs Earrings Sets", "6-Pack", "Set of 4"):
-  - Trust the description's stated quantity as ground truth for set size
-  - Do NOT flag Total Count or Count Per Pack discrepancy as bad data
-    when those attributes clearly reflect a different counting unit
-    (e.g., 2 = earring types per pair, while description says 12 pairs total)
-  - If BOTH GTINs have the same count mismatch pattern
-    → systemic catalog issue, not a differentiating factor
-  - Only flag count as bad data if the SET NATURE of the product
-    is itself unclear or missing
-
----
-
-### RULE 12: TITLE MARKETING LANGUAGE — ATTRIBUTE + IMAGE AGREEMENT OVERRIDES TITLE
-If the product title contains marketing/descriptive terms
-(e.g., "14K Gold Plated", "Heavy Duty", "Premium Stainless")
-that conflict with the actual_color or material attribute,
-BUT the actual_color attribute AND main image AGREE with each other:
-  → The title contains marketing or aspirational language
-  → Do NOT flag this as a color or material contradiction
-  → Use actual_color attribute and image as the ground truth pair
-  → Title alone CANNOT trigger bad data when attribute + image are consistent
-
----
-
-### RULE 13: NEAR-MATCH COLOR NAMES — TREAT AS SAME
-The following color name pairs must be treated as identical:
-  - Silver = Silver Plated = Silver-A = Silver/Steel = Steel
-  - Gold = Gold Plated = 14K Gold = Golden
-  - White = Off-White = Cream = Pearl White
-  - Black = Matte Black = Jet Black
-  - Multicolor = Multi = Multi-Color = Multi-Colored
-Do NOT flag a ❌ contradiction when two values from the same group appear
-across attribute and image verification.
-
-═══════════════════════════════════════════════════════════════
-
-Respond with JSON only (no markdown, no backticks):
-{
-  "vertical_checks": [
-    {
-      "product_id": "Exact string from the PRODUCT ID header (e.g. 'GTIN#1 (007...)')",
-      "detected_category": "string",
-      "matched_sop_rules": ["scenario_ids consulted"],
-      "extracted_image_summary": "string (ultra-brief 5-10 word summary of key visual specs. If printed artwork is present, explicitly describe its specific orientation/elements like 'Cardinal facing left with pine trees' to capture differences)",
-      "has_bad_data": boolean,
-      "reason": "string (ULTRA-SHORT 1-2 sentence summary. Focus only on the main difference or missing attribute. DO NOT write long paragraphs.)",
-      "mismatch_details": [
-        {
-          "field": "string (only include fields that actually contradict)",
-          "imageValue": "string",
-          "textValue": "string"
-        }
-      ]
-    }
-  ],
-  "horizontal_clustering": [
-    {
-      "cluster_name": "string (descriptive label)",
-      "product_ids": ["string"],
-      "cluster_type": "string (duplicate|not_duplicate|bad_data)",
-      "recommended_action": "Exact string from the official actions list above",
-      "matched_sop_rule": "scenario_id that determined this clustering",
-      "reason": "string (ULTRA-SHORT 1-2 sentence summary. Focus only on the main difference or missing attribute. DO NOT write long paragraphs.)"
-    }
-  ]
-}
-"""
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  ANALYSIS FUNCTIONS
-# ─────────────────────────────────────────────────────────────────────────────
-# ─────────────────────────────────────────────────────────────────────────────
-#  ANALYSIS FUNCTIONS
-# ─────────────────────────────────────────────────────────────────────────────
-
 def _build_image_parts(image_data_list: list) -> list:
-    """Convert fetched image dicts to genai Part objects."""
     parts = []
     for img in image_data_list:
         if img:
-            parts.append(
-                types.Part.from_bytes(
-                    data=base64.b64decode(img["data"]),
-                    mime_type=img["mime_type"]
-                )
-            )
+            parts.append(types.Part.from_bytes(data=base64.b64decode(img["data"]), mime_type=img["mime_type"]))
     return parts
-
 
 def format_error(e: Exception) -> tuple[int, str]:
     err_str = str(e)
     code = getattr(e, 'code', 500)
     msg = getattr(e, 'message', err_str)
-    
-    if "RECITATION" in err_str:
-        return 400, f"[API 400] Gemini blocked the response due to a Recitation/Copyright filter."
-    elif "SAFETY" in err_str or "HARM_CATEGORY" in err_str:
-        return 400, f"[API 400] Gemini blocked the response due to Safety filters."
-    elif "Quota" in err_str or "429" in err_str:
-        return 429, f"[HTTP 429] Gemini API Quota Exceeded or Rate Limited."
-    elif "403" in err_str or "PERMISSION_DENIED" in err_str:
-        return 403, f"[HTTP 403] Gemini API Authentication or Permission Error."
-    
+    patterns = [
+        ("RECITATION", (400, "Gemini blocked response due to Recitation/Copyright filter.")),
+        ("SAFETY", (400, "Gemini blocked response due to Safety filters.")),
+        ("HARM_CATEGORY", (400, "Gemini blocked response due to Safety filters.")),
+        ("429", (429, "Gemini API Quota Exceeded or Rate Limited.")),
+        ("Quota", (429, "Gemini API Quota Exceeded or Rate Limited.")),
+        ("403", (403, "Gemini API Authentication or Permission Error.")),
+        ("PERMISSION_DENIED", (403, "Gemini API Authentication or Permission Error.")),
+    ]
+    for substr, (sc, sm) in patterns:
+        if substr in err_str:
+            return sc, f"[HTTP {sc}] {sm}"
     return code, f"[HTTP {code}] {msg}"
 
+# Static rules are now in the Gemini context cache (via system_prompt.py + rule_compiler.py).
+# These framing prompts only contain dynamic per-request content.
+SINGLE_ANALYSIS_FRAMING = "TASK: Analyze this product for internal data consistency (vertical check).\nProduct Title: {title}\nText Attributes: {attributes}\n\nUse the SOP rules and instructions from the cached context. Respond with JSON only."
+
+BATCH_FRAMING = "TASK: Analyze these {n} products for duplicate/non-duplicate/bad-data.\nBelow are the products to analyze:\n"
+
+def _append_images_to_parts(content_parts, image_data_list, fallback_text="[No Images Could Be Fetched — treat extracted_image_specs as 'None' for this product]"):
+    has_img = False
+    for img in image_data_list:
+        if img:
+            content_parts.append(types.Part.from_bytes(data=base64.b64decode(img["data"]), mime_type=img["mime_type"]))
+            has_img = True
+    if not has_img:
+        content_parts.append(types.Part.from_text(text=fallback_text))
 
 async def process_analysis(title, attributes, imageUrls):
-    prompt = SINGLE_ANALYSIS_PROMPT_TEMPLATE.format(
-        title=title,
-        attributes=json.dumps(attributes, indent=2)
-    )
-
+    prompt = SINGLE_ANALYSIS_FRAMING.format(title=title, attributes=json.dumps(attributes, indent=2))
     image_parts = []
     async with httpx.AsyncClient() as http_client:
-        tasks = [fetch_image(http_client, url) for url in imageUrls]
-        fetched_images = await asyncio.gather(*tasks)
-        for img in fetched_images:
+        fetched = await asyncio.gather(*[fetch_image(http_client, url) for url in imageUrls])
+        for img in fetched:
             if img:
                 image_parts.append(img)
-
     if not image_parts:
         return {"status": "error", "message": "[HTTP 400] Could not fetch any images.", "status_code": 400}
-
     try:
-        print("\n" + "=" * 50)
-        print("🚀 SENDING REQUEST TO GEMINI (Single Analysis — Context Cached)")
-        print("=" * 50)
-
-        # Build content parts: text prompt + images
-        content_parts = [types.Part.from_text(text=prompt)]
-        content_parts.extend(_build_image_parts(image_parts))
-
-        contents = [types.Content(role="user", parts=content_parts)]
-
+        print("\n" + "=" * 40)
+        print("SENDING REQUEST TO GEMINI (Single Analysis)")
+        print("=" * 40)
+        contents = [types.Content(role="user", parts=[types.Part.from_text(text=prompt)] + _build_image_parts(image_parts))]
         response_text = generate_with_cache(contents)
-
         if not response_text:
             raise Exception("Gemini API returned an empty response.")
-
         text = response_text.strip()
-        print("\n" + "=" * 50)
-        print("✅ RECEIVED RESPONSE FROM GEMINI (Single Analysis)")
-        print("=" * 50)
-        print(f"{text}")
-        print("=" * 50 + "\n")
+        print("\n" + "=" * 40)
+        print("RECEIVED RESPONSE FROM GEMINI")
+        print("=" * 40)
+        print(text)
+        print("=" * 40 + "\n")
         text = text.replace("```json", "").replace("```", "").strip()
-
         return {"status": "success", "data": json.loads(text)}
-
     except json.JSONDecodeError:
         print("Failed to parse JSON:", text)
         return {"status": "error", "message": "[API 422] Invalid JSON response from AI.", "status_code": 422}
@@ -714,19 +239,16 @@ async def process_analysis(title, attributes, imageUrls):
         code, msg = format_error(e)
         return {"status": "error", "message": msg, "status_code": code}
 
-
 MAX_RETRIES = 1
-
 
 async def process_batch_analysis(products):
     n = len(products)
 
-    # Append cardinality + clustering reminder to ensure Gemini outputs all
-    # products and applies the correct clustering rules.
-    cardinal_prompt = BATCH_ANALYSIS_PROMPT + (
-        f"\n\n══════════════════════════════════════════════════════════════════\n"
-        f"FINAL REMINDERS BEFORE YOU RESPOND\n"
-        f"══════════════════════════════════════════════════════════════════\n"
+    # Build per-request framing — just product data + cardinal reminders.
+    # All static rules/instructions are in the cache.
+    prompt = BATCH_FRAMING.format(n=n)
+    prompt += (
+        f"\nFINAL REMINDERS BEFORE YOU RESPOND\n"
         f"• You are analyzing EXACTLY {n} products.\n"
         f"• Your vertical_checks array MUST contain EXACTLY {n} entries —\n"
         f"  one for each product_id listed above. Do NOT skip, merge, or omit ANY product.\n"
@@ -739,164 +261,85 @@ async def process_batch_analysis(products):
         f"• 'Not sure bad data' is LAST RESORT. Use actions 2-5 first.\n"
         f"  Do NOT use Bad Data for missing attributes or OCR gaps.\n"
     )
-    
     if n == 2:
-        cardinal_prompt += (
+        prompt += (
             f"• SPECIAL RULE FOR EXACTLY 2 PRODUCTS:\n"
             f"  - If ANY ONE of the 2 products evaluates to 'Not sure bad data' in the vertical check, you MUST classify ALL of them as 'Not sure bad data' in horizontal clustering.\n"
             f"  - EXCEPTION: If the images of the 2 products are clearly different visually (e.g., different shapes, colors, or structural designs), you MUST force mark them as 'Not duplicate', completely overriding the Bad Data rule above.\n"
             f"  - If they are duplicates, classify the cluster as 'Duplicate'.\n"
             f"  - Otherwise, use the standard rules.\n"
         )
-    
-    content_parts = [types.Part.from_text(text=cardinal_prompt)]
 
+    content_parts = [types.Part.from_text(text=prompt)]
     async with httpx.AsyncClient() as http_client:
-        seen_image_sets = {}      # url_signature → first_prod_id
-        image_cache = {}          # url_signature → [fetched_image_dict, ...]
-
+        image_cache = {}
         for p in products:
             prod_id = p.get('id', 'Unknown')
-            prod_text = (
+            content_parts.append(types.Part.from_text(text=(
                 f"\n\n--- PRODUCT ID: {prod_id} ---\n"
                 f"Title: {p.get('title')}\n"
                 f"Description: {p.get('description', '')}\n"
                 f"Attributes: {json.dumps(p.get('attributes', {}), indent=2)}\n"
                 f"Images for {prod_id}:"
-            )
-            content_parts.append(types.Part.from_text(text=prod_text))
-
+            )))
             urls = p.get('imageUrls', [])
-
             if not urls:
                 content_parts.append(types.Part.from_text(text="[No Images Provided for this product]"))
                 continue
-
-            url_signature = tuple(sorted(list(set(urls))))
-
-            if url_signature in image_cache:
-                # Images already fetched for a previous product — reuse cached
-                # bytes instead of fetching again AND instead of sending a text
-                # placeholder. This saves network round-trips while still giving
-                # Gemini the actual images so it can independently analyze every
-                # product (not dropping deduped entries).
-                cached = image_cache[url_signature]
-                has_img = False
-                for img in cached:
-                    if img:
-                        content_parts.append(
-                            types.Part.from_bytes(
-                                data=base64.b64decode(img["data"]),
-                                mime_type=img["mime_type"]
-                            )
-                        )
-                        has_img = True
-                if not has_img:
-                    content_parts.append(types.Part.from_text(
-                        text="[No Images Could Be Fetched for this product]"
-                    ))
+            sig = tuple(sorted(set(urls)))
+            if sig in image_cache:
+                _append_images_to_parts(content_parts, image_cache[sig], "[No Images Could Be Fetched for this product]")
             else:
-                seen_image_sets[url_signature] = prod_id
-                tasks = [fetch_image(http_client, url) for url in urls]
-                fetched_images = await asyncio.gather(*tasks)
-                # Cache the result so duplicate image-sets don't re-fetch
-                image_cache[url_signature] = fetched_images
-
-                has_img = False
-                for img in fetched_images:
-                    if img:
-                        content_parts.append(
-                            types.Part.from_bytes(
-                                data=base64.b64decode(img["data"]),
-                                mime_type=img["mime_type"]
-                            )
-                        )
-                        has_img = True
-
-                if not has_img:
-                    content_parts.append(types.Part.from_text(
-                        text="[No Images Could Be Fetched — treat extracted_image_specs as 'None' for this product]"
-                    ))
+                fetched = await asyncio.gather(*[fetch_image(http_client, url) for url in urls])
+                image_cache[sig] = fetched
+                _append_images_to_parts(content_parts, fetched)
 
     try:
-        print("\n" + "=" * 50)
-        print("🚀 SENDING REQUEST TO GEMINI (Batch Analysis — Context Cached)")
-        print("=" * 50)
-
-        # Log what we're sending (text parts only, not image bytes)
+        print("\n" + "=" * 40)
+        print("SENDING REQUEST TO GEMINI (Batch Analysis)")
+        print("=" * 40)
         for idx, part in enumerate(content_parts):
             if hasattr(part, 'text') and part.text:
                 print(f"--- Text Part {idx} ---\n{part.text[:200]}...\n")
             else:
                 print(f"--- Image Part {idx} ---")
-        print("=" * 50 + "\n")
-
+        print("=" * 40 + "\n")
         contents = [types.Content(role="user", parts=content_parts)]
         response_text = generate_with_cache(contents)
-
         if not response_text:
             raise Exception("Gemini API returned an empty response.")
-
         text = response_text.strip().replace("```json", "").replace("```", "").strip()
-        print("\n" + "=" * 50)
-        print("✅ RECEIVED RESPONSE FROM GEMINI (Batch Analysis)")
-        print("=" * 50)
-        print(f"{text}")
-        print("=" * 50 + "\n")
-
+        print("\n" + "=" * 40)
+        print("RECEIVED RESPONSE FROM GEMINI")
+        print("=" * 40)
+        print(text)
+        print("=" * 40 + "\n")
         data = json.loads(text)
         output_ids = {v['product_id'] for v in data.get('vertical_checks', [])}
         input_ids = {p.get('id', 'Unknown') for p in products}
-        
-        missing_ids = set()
-        for i_id in input_ids:
-            if not any(i_id in o_id or o_id in i_id for o_id in output_ids):
-                missing_ids.add(i_id)
-
+        missing_ids = {i_id for i_id in input_ids if not any(i_id in o_id or o_id in i_id for o_id in output_ids)}
         retries_left = MAX_RETRIES
         while missing_ids and retries_left > 0:
             retries_left -= 1
-            print(f"\n⚠ Retrying — Gemini returned {len(output_ids)}/{n} products. "
-                  f"Missing: {missing_ids}")
-
-            correction = (
-                f"\n\n--- CORRECTION ---\n"
-                f"You only returned {len(output_ids)} vertical_checks entries, "
-                f"but there are {n} products.  "
-                f"You MISSED product(s): {missing_ids}.  "
-                f"Please output the COMPLETE analysis for ALL {n} products "
-                f"— vertical_checks MUST contain exactly {n} entries.  "
-                f"Every product_id below MUST appear exactly once.\n"
-                f"Also recheck your clustering: bad data products must each have "
-                f"their own standalone cluster."
-            )
+            print(f"\nRetrying — Gemini returned {len(output_ids)}/{n}. Missing: {missing_ids}")
+            correction = f"\n\n--- CORRECTION ---\nYou only returned {len(output_ids)} vertical_checks entries, but there are {n} products. You MISSED: {missing_ids}. Output COMPLETE analysis for ALL {n} — vertical_checks MUST contain exactly {n} entries. Every product_id MUST appear once.\nAlso recheck clustering: bad data products each get their own standalone cluster."
             content_parts.append(types.Part.from_text(text=correction))
             contents = [types.Content(role="user", parts=content_parts)]
             retry_text = generate_with_cache(contents)
-
             if not retry_text:
                 print("  Retry gave empty response, keeping original.")
                 break
-
             retry_text = retry_text.strip().replace("```json", "").replace("```", "").strip()
             try:
                 retry_data = json.loads(retry_text)
             except json.JSONDecodeError:
                 print("  Retry JSON parse failed, keeping original.")
                 break
-
             retry_ids = {v['product_id'] for v in retry_data.get('vertical_checks', [])}
-            newly_missing = set()
-            for i_id in input_ids:
-                if not any(i_id in o_id or o_id in i_id for o_id in retry_ids):
-                    newly_missing.add(i_id)
-                    
+            newly_missing = {i_id for i_id in input_ids if not any(i_id in o_id or o_id in i_id for o_id in retry_ids)}
             recovered = len(missing_ids) - len(newly_missing)
             if recovered > 0:
-                print(f"  ✅ Retry recovered {recovered} product(s) "
-                      f"({len(retry_ids)} total, still missing {newly_missing})")
-                # Merge: keep all retry entries + any original entries that
-                # the retry omitted (product_id collision → prefer retry).
+                print(f"  Retry recovered {recovered} product(s) ({len(retry_ids)} total, still missing {newly_missing})")
                 original_vc = data.get('vertical_checks', [])
                 seen_ids = set()
                 merged = []
@@ -907,28 +350,18 @@ async def process_batch_analysis(products):
                     if entry['product_id'] not in seen_ids:
                         merged.append(entry)
                         seen_ids.add(entry['product_id'])
-                # Re-sort to match input product order
                 id_order = [p.get('id', 'Unknown') for p in products]
-                merged.sort(key=lambda v: id_order.index(v['product_id'])
-                            if v['product_id'] in id_order else len(id_order))
+                merged.sort(key=lambda v: id_order.index(v['product_id']) if v['product_id'] in id_order else len(id_order))
                 data['vertical_checks'] = merged
-                # Use retry's clustering (it should be more complete)
-                data['horizontal_clustering'] = retry_data.get(
-                    'horizontal_clustering',
-                    data.get('horizontal_clustering', [])
-                )
-                # Update tracking for the loop guard
+                data['horizontal_clustering'] = retry_data.get('horizontal_clustering', data.get('horizontal_clustering', []))
                 output_ids = input_ids - newly_missing
                 missing_ids = newly_missing
             else:
                 print("  Retry did not improve, keeping original response.")
                 break
-
         if missing_ids:
-            print(f"⚠ FINAL: {len(missing_ids)} product(s) still missing after retries: {missing_ids}")
-
+            print(f"FINAL: {len(missing_ids)} product(s) still missing after retries: {missing_ids}")
         return {"status": "success", "data": data}
-
     except json.JSONDecodeError:
         print("Failed to parse JSON:", text)
         return {"status": "error", "message": "[API 422] Invalid JSON response from AI.", "status_code": 422}
@@ -937,119 +370,69 @@ async def process_batch_analysis(products):
         code, msg = format_error(e)
         return {"status": "error", "message": msg, "status_code": code}
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  FLASK APP & ROUTES
-# ─────────────────────────────────────────────────────────────────────────────
-# ─────────────────────────────────────────────────────────────────────────────
-#  FLASK APP & ROUTES
-# ─────────────────────────────────────────────────────────────────────────────
 app = Flask(__name__)
 CORS(app)
 
-
 @app.route("/", methods=["GET"])
 def index():
-    cache_status = "active" if _cached_content else "inactive (fallback mode)"
     return jsonify({
         "status": "running",
         "message": "DupCheck Backend is active and listening.",
-        "context_cache": cache_status,
+        "context_cache": "active" if _cached_content else "inactive (fallback mode)",
         "cache_name": _cached_content.name if _cached_content else None,
     })
 
-
 @app.route("/api/cache-status", methods=["GET"])
 def cache_status():
-    """Check the current state of the context cache."""
     if _cached_content:
-        return jsonify({
-            "cached": True,
-            "cache_name": _cached_content.name,
-            "model": GEMINI_MODEL,
-            "ttl_hours": CACHE_TTL_HOURS,
-        })
-    else:
-        return jsonify({
-            "cached": False,
-            "message": "No active context cache. Rules sent inline per request.",
-        })
-
+        return jsonify({"cached": True, "cache_name": _cached_content.name, "model": GEMINI_MODEL, "ttl_hours": CACHE_TTL_HOURS})
+    return jsonify({"cached": False, "message": "No active context cache. Rules sent inline per request."})
 
 @app.route("/api/cache-refresh", methods=["POST"])
 def cache_refresh():
-    """Force-refresh the context cache (e.g., after updating rules.json)."""
     delete_rule_cache()
     create_rule_cache()
     if _cached_content:
         return jsonify({"status": "success", "cache_name": _cached_content.name})
-    else:
-        return jsonify({"status": "error", "message": "Cache creation failed"}), 500
-
+    return jsonify({"status": "error", "message": "Cache creation failed"}), 500
 
 @app.route("/test-ai", methods=["GET"])
 def test_ai():
-    title = "Bulbasaur"
-    attributes = {"Type": "Grass", "Color": "Blue"}
-    imageUrls = ["https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/1.png"]
-    result = asyncio.run(process_analysis(title, attributes, imageUrls))
-    html_response = f"""
-    <html>
-        <body style="font-family: monospace; background: #1e1e1e; color: #00ff00; padding: 20px;">
-            <h2>AI Vision Test Result</h2>
-            <pre>{json.dumps(result, indent=4)}</pre>
-        </body>
-    </html>
+    result = asyncio.run(process_analysis(
+        "Bulbasaur",
+        {"Type": "Grass", "Color": "Blue"},
+        ["https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/1.png"]
+    ))
+    return f"""
+    <html><body style="font-family:monospace;background:#1e1e1e;color:#00ff00;padding:20px;">
+    <h2>AI Vision Test Result</h2><pre>{json.dumps(result, indent=4)}</pre>
+    </body></html>
     """
-    return html_response
-
 
 @app.route("/api/analyze-column", methods=["POST"])
 def analyze_column():
-    req_data = request.get_json()
-    title = req_data.get("title", "")
-    attributes = req_data.get("attributes", {})
-    imageUrls = req_data.get("imageUrls", [])
-
-    if not imageUrls:
+    req = request.get_json()
+    if not req.get("imageUrls"):
         return jsonify({"status": "error", "message": "[HTTP 400] No image URLs provided for analysis.", "status_code": 400}), 400
-
-    result = asyncio.run(process_analysis(title, attributes, imageUrls))
-
+    result = asyncio.run(process_analysis(req.get("title", ""), req.get("attributes", {}), req.get("imageUrls", [])))
     if result.get("status") == "error":
         return jsonify(result), result.get("status_code", 500)
-
     return jsonify(result)
-
 
 @app.route("/api/analyze-batch", methods=["POST"])
 def analyze_batch():
-    req_data = request.get_json()
-    products = req_data.get("products", [])
-
+    products = request.get_json().get("products", [])
     print(f"Received batch analysis request for {len(products)} products")
-
     if not products:
         return jsonify({"status": "error", "message": "[HTTP 400] No products provided for analysis.", "status_code": 400}), 400
-
-    print(f"🚀 Running AI batch analysis...")
+    print("Running AI batch analysis...")
     result = asyncio.run(process_batch_analysis(products))
-
     if result.get("status") == "error":
         return jsonify(result), result.get("status_code", 500)
-
     return jsonify(result)
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  STARTUP & SHUTDOWN
-# ─────────────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    # Create context cache on startup
     create_rule_cache()
-
-    # Register cleanup on shutdown (delete cache to stop billing)
     atexit.register(delete_rule_cache)
-
     print("DupCheck backend running on http://localhost:8000")
     app.run(host="0.0.0.0", port=8000, debug=True)
